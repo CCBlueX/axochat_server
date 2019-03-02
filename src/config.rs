@@ -16,6 +16,7 @@ pub struct Config {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NetConfig {
+    /// The address the server will listen at.
     pub address: SocketAddr,
 }
 
