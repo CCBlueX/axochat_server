@@ -30,7 +30,7 @@ impl Default for NetConfig {
 
 /// Reads the configuration file at `$CONFIG_PATH` or creates one if none was found.
 pub fn read_config() -> Result<Config> {
-    let path = env::var("CONFIG_PATH").unwrap_or_else(|_| String::from("./ferrmontis.toml"));
+    let path = env::var("CONFIG_PATH").unwrap_or_else(|_| String::from("./axochat.toml"));
     let path = PathBuf::from(path);
 
     match File::open(&path) {
