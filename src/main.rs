@@ -1,3 +1,4 @@
+mod chat;
 mod config;
 mod error;
 
@@ -13,9 +14,12 @@ fn main() -> Result<()> {
 
     let system = System::new("axochat");
 
-    HttpServer::new(move || App::new())
-        .bind(config.net.address)?
-        .start();
+    HttpServer::new(move || {
+        let server_state = chat::ServerState {};
+        App::with_state(server_state).resource("/ws", |r| r.route().f(chat::chat_route))
+    })
+    .bind(config.net.address)?
+    .start();
 
     info!("Started server at {}", config.net.address);
     system.run();
