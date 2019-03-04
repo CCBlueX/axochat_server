@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::error::*;
 use log::*;
 
-use actix::{Actor, Addr, Context, Handler, Handler, Message, Recipient, StreamHandler};
+use actix::{Actor, Addr, Context, Handler, Message, Recipient, StreamHandler};
 use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::Serialize;
 
