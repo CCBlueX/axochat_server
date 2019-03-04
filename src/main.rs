@@ -17,7 +17,7 @@ fn main() -> Result<()> {
     let server = Arbiter::start(|_| chat::ChatServer::default());
 
     HttpServer::new(move || {
-        let server_state = chat::ServerState { addr: server };
+        let server_state = chat::ServerState { addr: server.clone() };
         App::with_state(server_state).resource("/ws", |r| r.route().f(chat::chat_route))
     })
     .bind(config.net.address)?

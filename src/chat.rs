@@ -14,7 +14,7 @@ pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpRespo
 
 #[derive(Clone)]
 pub struct ServerState {
-    addr: Addr<ChatServer>,
+    pub addr: Addr<ChatServer>,
 }
 
 struct Session;
