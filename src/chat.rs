@@ -2,11 +2,12 @@ use crate::config::Config;
 use crate::error::*;
 use log::*;
 
-use actix::{Actor, Addr, Context, Handler, Message, Recipient, StreamHandler};
+use actix::*;
 use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::Serialize;
 
 use hashbrown::HashMap;
+use rand::Rng;
 
 pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpResponse> {
     ws::start(req, Session)
@@ -21,6 +22,25 @@ struct Session;
 
 impl Actor for Session {
     type Context = ws::WebsocketContext<Self, ServerState>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        let addr = ctx.address();
+        ctx.state()
+            .addr
+            .send(Connect { addr: addr.recipient() })
+            .into_actor(self)
+            .then(|res, _actor, ctx| {
+                match res {
+                    Ok(_) => {}
+                    Err(err) => {
+                        warn!("Could not accept connection: {}", err);
+                        ctx.stop();
+                    }
+                }
+                fut::ok(())
+            })
+            .wait(ctx)
+    }
 }
 
 impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
@@ -29,35 +49,61 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
     }
 }
 
-impl Handler<Packet> for Session {
+impl Handler<ClientPacket> for Session {
     type Result = ();
 
-    fn handle(&mut self, msg: Packet, ctx: &mut Self::Context) {
-        ctx.binary(msg.0);
+    fn handle(&mut self, msg: ClientPacket, ctx: &mut Self::Context) {
+        let bytes = serde_cbor::to_vec(&msg).expect("could not encode message");
+        ctx.binary(bytes);
     }
 }
 
-#[derive(Message)]
-struct Packet(Vec<u8>);
+/// A clientbound packet
+#[derive(Message, Serialize)]
+enum ClientPacket {
 
-impl<T: Serialize> From<&T> for Packet {
-    fn from(value: &T) -> Packet {
-        Packet(serde_cbor::to_vec(value).expect("could not serialize packet"))
-    }
 }
 
 pub struct ChatServer {
-    connections: HashMap<usize, Recipient<Packet>>,
+    connections: HashMap<usize, Recipient<ClientPacket>>,
+    rng: rand::rngs::ThreadRng,
 }
 
 impl Default for ChatServer {
     fn default() -> ChatServer {
         ChatServer {
             connections: HashMap::new(),
+            rng: rand::thread_rng(),
         }
     }
 }
 
 impl Actor for ChatServer {
     type Context = Context<Self>;
+}
+
+#[derive(Message)]
+#[rtype(usize)]
+struct Connect {
+    addr: Recipient<ClientPacket>,
+}
+
+impl Handler<Connect> for ChatServer {
+    type Result = usize;
+
+    fn handle(&mut self, msg: Connect, _ctx: &mut Context<Self>) -> usize {
+        use hashbrown::hash_map::Entry;
+
+        loop {
+            let id = self.rng.gen();
+            match self.connections.entry(id) {
+                Entry::Occupied(_) => {}
+                Entry::Vacant(v) => {
+                    v.insert(msg.addr.clone());
+                    debug!("User with id {:x} joined the chat.", id);
+                    return id;
+                }
+            }
+        }
+    }
 }
