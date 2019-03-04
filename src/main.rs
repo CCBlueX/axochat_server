@@ -5,7 +5,8 @@ mod error;
 use error::*;
 use log::*;
 
-use actix_web::{actix::System, server::HttpServer, App};
+use actix::{Arbiter, System};
+use actix_web::{server::HttpServer, App};
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -13,9 +14,10 @@ fn main() -> Result<()> {
     debug!("Read configuration file: {:?}", config);
 
     let system = System::new("axochat");
+    let server = Arbiter::start(|_| chat::ChatServer::default());
 
     HttpServer::new(move || {
-        let server_state = chat::ServerState {};
+        let server_state = chat::ServerState { addr: server };
         App::with_state(server_state).resource("/ws", |r| r.route().f(chat::chat_route))
     })
     .bind(config.net.address)?

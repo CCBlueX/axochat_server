@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::error::*;
 use log::*;
 
-use actix::{Actor, Addr, Handler, Message, Recipient, Handler, StreamHandler, Context};
+use actix::{Actor, Addr, Context, Handler, Handler, Message, Recipient, StreamHandler};
 use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::Serialize;
 
@@ -13,7 +13,9 @@ pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpRespo
 }
 
 #[derive(Clone)]
-pub struct ServerState;
+pub struct ServerState {
+    addr: Addr<ChatServer>,
+}
 
 struct Session;
 
@@ -44,8 +46,16 @@ impl<T: Serialize> From<&T> for Packet {
     }
 }
 
-struct ChatServer {
+pub struct ChatServer {
     connections: HashMap<usize, Recipient<Packet>>,
+}
+
+impl Default for ChatServer {
+    fn default() -> ChatServer {
+        ChatServer {
+            connections: HashMap::new(),
+        }
+    }
 }
 
 impl Actor for ChatServer {
