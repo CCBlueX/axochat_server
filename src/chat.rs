@@ -2,25 +2,20 @@ use crate::config::Config;
 use crate::error::*;
 use log::*;
 
+use crate::auth::authenticate;
 use actix::{
     dev::{MessageResponse, ResponseChannel},
     *,
 };
 use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
-use crate::auth::authenticate;
 
 use hashbrown::HashMap;
 use rand::{rngs::OsRng, Rng, RngCore, SeedableRng};
 use rand_hc::Hc128Rng;
 
 pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpResponse> {
-    ws::start(
-        req,
-        Session {
-            id: 0,
-        },
-    )
+    ws::start(req, Session { id: 0 })
 }
 
 #[derive(Clone)]
@@ -157,8 +152,14 @@ struct Disconnect {
 /// A clientbound packet
 #[derive(Message, Serialize, Clone)]
 enum ClientPacket {
-    ServerInfo { session_hash: String },
-    Message { author_id: usize, content: String },
+    ServerInfo {
+        session_hash: String,
+    },
+    Message {
+        author_id: usize,
+        author_name: Option<String>,
+        content: String,
+    },
 }
 
 /// A serverbound packet
@@ -256,7 +257,10 @@ impl Handler<ServerPacketId> for ChatServer {
                 anonymous,
                 username,
             } => {
-                let session = self.connections.get(&user_id).expect("could not find connection");
+                let session = self
+                    .connections
+                    .get(&user_id)
+                    .expect("could not find connection");
 
                 match authenticate(&username, &session.session_hash) {
                     Ok(fut) => {
@@ -264,31 +268,55 @@ impl Handler<ServerPacketId> for ChatServer {
                             .then(move |res, _actor, ctx| {
                                 match res {
                                     Ok(info) => {
-                                        info!("User with id `{:x}` has uuid `{}` and username `{}`", user_id, info.id, info.name);
+                                        info!(
+                                            "User with id `{:x}` has uuid `{}` and username `{}`",
+                                            user_id, info.id, info.name
+                                        );
                                     }
                                     Err(err) => {
-                                        warn!("Could not authenticate user `{:x}`: {}", user_id, err);
+                                        warn!(
+                                            "Could not authenticate user `{:x}`: {}",
+                                            user_id, err
+                                        );
                                         ctx.stop();
                                     }
                                 }
                                 fut::ok(())
                             })
                             .wait(ctx);
-                    },
+                    }
                     Err(err) => {
-                        warn!("Could not authenticate user `{}` with id `{:x}`: {}", username, user_id, err);
+                        warn!(
+                            "Could not authenticate user `{}` with id `{:x}`: {}",
+                            username, user_id, err
+                        );
                         ctx.stop();
                     }
                 }
 
-                let session = self.connections.get_mut(&user_id).expect("could not find connection");
+                let session = self
+                    .connections
+                    .get_mut(&user_id)
+                    .expect("could not find connection");
                 session.username = username;
                 session.anonymous = anonymous;
             }
             ServerPacket::Message { content } => {
                 info!("{:x} has written `{}`.", user_id, content);
+                let session = self
+                    .connections
+                    .get(&user_id)
+                    .expect("could not find connection");
+
+                let author_name = if session.anonymous {
+                    None
+                } else {
+                    Some(session.username.clone())
+                };
+
                 let client_packet = ClientPacket::Message {
                     author_id: user_id,
+                    author_name,
                     content: content,
                 };
                 for session in self.connections.values() {
