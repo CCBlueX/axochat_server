@@ -4,13 +4,14 @@ use log::*;
 
 use actix::*;
 use actix_web::{ws, HttpRequest, HttpResponse};
-use serde::Serialize;
+use futures::Future;
+use serde::{Deserialize, Serialize};
 
 use hashbrown::HashMap;
 use rand::Rng;
 
 pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpResponse> {
-    ws::start(req, Session)
+    ws::start(req, Session { id: 0 })
 }
 
 #[derive(Clone)]
@@ -18,20 +19,23 @@ pub struct ServerState {
     pub addr: Addr<ChatServer>,
 }
 
-struct Session;
+struct Session {
+    id: usize,
+}
 
 impl Actor for Session {
     type Context = ws::WebsocketContext<Self, ServerState>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        let addr = ctx.address();
         ctx.state()
             .addr
-            .send(Connect { addr: addr.recipient() })
+            .send(Connect {
+                addr: ctx.address().recipient(),
+            })
             .into_actor(self)
-            .then(|res, _actor, ctx| {
+            .then(|res, actor, ctx| {
                 match res {
-                    Ok(_) => {}
+                    Ok(id) => actor.id = id,
                     Err(err) => {
                         warn!("Could not accept connection: {}", err);
                         ctx.stop();
@@ -46,6 +50,39 @@ impl Actor for Session {
 impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
     fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
         debug!("Received message {:?}", msg);
+        match msg {
+            ws::Message::Ping(msg) => ctx.pong(&msg),
+            ws::Message::Pong(_msg) => {}
+            ws::Message::Text(_msg) => {
+                warn!("Client sent text message.");
+            }
+            ws::Message::Binary(msg) => {
+                match serde_cbor::from_slice::<ServerPacket>(msg.as_ref()) {
+                    Ok(packet) => ctx
+                        .state()
+                        .addr
+                        .send(packet)
+                        .into_actor(self)
+                        .map_err(|err, _actor, _ctx| {
+                            warn!("Could not decode packet: {}", err);
+                        })
+                        .wait(ctx),
+                    Err(err) => {
+                        warn!("Could not decode packet: {}", err);
+                        return;
+                    }
+                };
+            }
+            ws::Message::Close(Some(reason)) => {
+                info!(
+                    "Connection with id {:x} closed; code: {:?}, reason: {:?}",
+                    self.id, reason.code, reason.description
+                );
+            }
+            ws::Message::Close(None) => {
+                info!("Connection with id {:x} closed.", self.id);
+            }
+        }
     }
 }
 
@@ -60,9 +97,11 @@ impl Handler<ClientPacket> for Session {
 
 /// A clientbound packet
 #[derive(Message, Serialize)]
-enum ClientPacket {
+enum ClientPacket {}
 
-}
+/// A serverbound packet
+#[derive(Message, Deserialize)]
+enum ServerPacket {}
 
 pub struct ChatServer {
     connections: HashMap<usize, Recipient<ClientPacket>>,
@@ -105,5 +144,13 @@ impl Handler<Connect> for ChatServer {
                 }
             }
         }
+    }
+}
+
+impl Handler<ServerPacket> for ChatServer {
+    type Result = ();
+
+    fn handle(&mut self, packet: ServerPacket, _ctx: &mut Context<Self>) {
+        match packet {}
     }
 }
