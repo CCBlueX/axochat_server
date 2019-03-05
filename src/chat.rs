@@ -18,8 +18,6 @@ pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpRespo
         req,
         Session {
             id: 0,
-            username: None,
-            session_hash: String::new(),
         },
     )
 }
@@ -31,8 +29,6 @@ pub struct ServerState {
 
 struct Session {
     id: usize,
-    session_hash: String,
-    username: Option<String>,
 }
 
 impl Actor for Session {
@@ -47,9 +43,8 @@ impl Actor for Session {
             .into_actor(self)
             .then(|res, actor, ctx| {
                 match res {
-                    Ok(resp) => {
-                        actor.session_hash = resp.session_hash;
-                        actor.id = resp.id;
+                    Ok(id) => {
+                        actor.id = id;
                     }
                     Err(err) => {
                         warn!("Could not accept connection: {}", err);
@@ -120,7 +115,7 @@ impl Handler<ClientPacket> for Session {
 }
 
 pub struct ChatServer {
-    connections: HashMap<usize, Recipient<ClientPacket>>,
+    connections: HashMap<usize, SessionState>,
     rng: rand_hc::Hc128Rng,
 }
 
@@ -140,28 +135,17 @@ impl Actor for ChatServer {
     type Context = Context<Self>;
 }
 
+struct SessionState {
+    addr: Recipient<ClientPacket>,
+    session_hash: String,
+    username: String,
+    anonymous: bool,
+}
+
 #[derive(Message)]
-#[rtype(ConnectResponse)]
+#[rtype(usize)]
 struct Connect {
     addr: Recipient<ClientPacket>,
-}
-
-#[derive(Message)]
-struct ConnectResponse {
-    id: usize,
-    session_hash: String,
-}
-
-impl<A, M> MessageResponse<A, M> for ConnectResponse
-where
-    A: Actor,
-    M: Message<Result = ConnectResponse>,
-{
-    fn handle<R: ResponseChannel<M>>(self, _ctx: &mut A::Context, tx: Option<R>) {
-        if let Some(tx) = tx {
-            tx.send(self);
-        }
-    }
 }
 
 #[derive(Message)]
@@ -189,14 +173,22 @@ struct ServerPacketId {
     packet: ServerPacket,
 }
 
-impl Handler<Connect> for ChatServer {
-    type Result = ConnectResponse;
+#[derive(Message)]
+struct ClientInfo {
+    anonymous: bool,
+    username: String,
+}
 
-    fn handle(&mut self, msg: Connect, ctx: &mut Context<Self>) -> ConnectResponse {
+impl Handler<Connect> for ChatServer {
+    type Result = usize;
+
+    fn handle(&mut self, msg: Connect, ctx: &mut Context<Self>) -> usize {
         use hashbrown::hash_map::Entry;
 
         let session_hash = {
-            const HEX_ALPHABET: [char; 16] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'];
+            const HEX_ALPHABET: [char; 16] = [
+                '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+            ];
 
             let mut bytes = [0; 20];
             self.rng.fill_bytes(&mut bytes);
@@ -234,9 +226,14 @@ impl Handler<Connect> for ChatServer {
             match self.connections.entry(id) {
                 Entry::Occupied(_) => {}
                 Entry::Vacant(v) => {
-                    v.insert(msg.addr.clone());
+                    v.insert(SessionState {
+                        addr: msg.addr.clone(),
+                        session_hash,
+                        username: String::new(),
+                        anonymous: true,
+                    });
                     debug!("User with id {:x} joined the chat.", id);
-                    return ConnectResponse { id, session_hash };
+                    return id;
                 }
             }
         }
@@ -263,15 +260,19 @@ impl Handler<ServerPacketId> for ChatServer {
             ServerPacket::Login {
                 anonymous,
                 username,
-            } => {}
+            } => {
+                let session = self.connections.get_mut(&user_id).expect("could not find connection");
+                session.username = username;
+                session.anonymous = anonymous;
+            }
             ServerPacket::Message { content } => {
                 info!("{:x} has written `{}`.", user_id, content);
                 let client_packet = ClientPacket::Message {
                     author_id: user_id,
                     content: content,
                 };
-                for conn in self.connections.values() {
-                    if let Err(err) = conn.do_send(client_packet.clone()) {
+                for session in self.connections.values() {
+                    if let Err(err) = session.addr.do_send(client_packet.clone()) {
                         warn!("Could not send message to client: {}", err);
                     }
                 }
