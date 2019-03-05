@@ -4,7 +4,6 @@ use log::*;
 
 use actix::*;
 use actix_web::{ws, HttpRequest, HttpResponse};
-use futures::Future;
 use serde::{Deserialize, Serialize};
 
 use hashbrown::HashMap;
