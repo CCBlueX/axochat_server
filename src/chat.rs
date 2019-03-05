@@ -65,7 +65,10 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
                     Ok(packet) => ctx
                         .state()
                         .addr
-                        .send(packet)
+                        .send(ServerPacketId {
+                            user_id: self.id,
+                            packet,
+                        })
                         .into_actor(self)
                         .map_err(|err, _actor, _ctx| {
                             warn!("Could not decode packet: {}", err);
@@ -100,14 +103,6 @@ impl Handler<ClientPacket> for Session {
     }
 }
 
-/// A clientbound packet
-#[derive(Message, Serialize)]
-enum ClientPacket {}
-
-/// A serverbound packet
-#[derive(Message, Deserialize)]
-enum ServerPacket {}
-
 pub struct ChatServer {
     connections: HashMap<usize, Recipient<ClientPacket>>,
     rng: rand::rngs::ThreadRng,
@@ -135,6 +130,29 @@ struct Connect {
 #[derive(Message)]
 struct Disconnect {
     id: usize,
+}
+
+/// A clientbound packet
+#[derive(Message, Serialize, Clone)]
+enum ClientPacket {
+    Message {
+        author_id: usize,
+        content: String,
+    }
+}
+
+/// A serverbound packet
+#[derive(Message, Deserialize)]
+enum ServerPacket {
+    Message {
+        content: String,
+    },
+}
+
+#[derive(Message)]
+struct ServerPacketId {
+    user_id: usize,
+    packet: ServerPacket,
 }
 
 impl Handler<Connect> for ChatServer {
@@ -165,10 +183,22 @@ impl Handler<Disconnect> for ChatServer {
     }
 }
 
-impl Handler<ServerPacket> for ChatServer {
+impl Handler<ServerPacketId> for ChatServer {
     type Result = ();
 
-    fn handle(&mut self, packet: ServerPacket, _ctx: &mut Context<Self>) {
-        match packet {}
+    fn handle(&mut self, ServerPacketId { user_id, packet }: ServerPacketId, _ctx: &mut Context<Self>) {
+        match packet {
+            ServerPacket::Message { content } => {
+                let client_packet = ClientPacket::Message {
+                    author_id: user_id,
+                    content: content,
+                };
+                for conn in self.connections.values() {
+                    if let Err(err) = conn.do_send(client_packet.clone()) {
+                        warn!("Could not send message to client: {}", err);
+                    }
+                }
+            }
+        }
     }
 }
