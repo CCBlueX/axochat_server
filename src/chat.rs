@@ -8,6 +8,7 @@ use actix::{
 };
 use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
+use crate::auth::authenticate;
 
 use hashbrown::HashMap;
 use rand::{rngs::OsRng, Rng, RngCore, SeedableRng};
@@ -173,12 +174,6 @@ struct ServerPacketId {
     packet: ServerPacket,
 }
 
-#[derive(Message)]
-struct ClientInfo {
-    anonymous: bool,
-    username: String,
-}
-
 impl Handler<Connect> for ChatServer {
     type Result = usize;
 
@@ -254,13 +249,38 @@ impl Handler<ServerPacketId> for ChatServer {
     fn handle(
         &mut self,
         ServerPacketId { user_id, packet }: ServerPacketId,
-        _ctx: &mut Context<Self>,
+        ctx: &mut Context<Self>,
     ) {
         match packet {
             ServerPacket::Login {
                 anonymous,
                 username,
             } => {
+                let session = self.connections.get(&user_id).expect("could not find connection");
+
+                match authenticate(&username, &session.session_hash) {
+                    Ok(fut) => {
+                        fut.into_actor(self)
+                            .then(move |res, _actor, ctx| {
+                                match res {
+                                    Ok(info) => {
+                                        info!("User with id `{:x}` has uuid `{}` and username `{}`", user_id, info.id, info.name);
+                                    }
+                                    Err(err) => {
+                                        warn!("Could not authenticate user `{:x}`: {}", user_id, err);
+                                        ctx.stop();
+                                    }
+                                }
+                                fut::ok(())
+                            })
+                            .wait(ctx);
+                    },
+                    Err(err) => {
+                        warn!("Could not authenticate user `{}` with id `{:x}`: {}", username, user_id, err);
+                        ctx.stop();
+                    }
+                }
+
                 let session = self.connections.get_mut(&user_id).expect("could not find connection");
                 session.username = username;
                 session.anonymous = anonymous;

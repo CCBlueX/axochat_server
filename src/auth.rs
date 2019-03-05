@@ -33,7 +33,7 @@ pub fn authenticate(
 
 #[derive(Debug, Deserialize)]
 pub struct AuthInfo {
-    id: String,
-    name: String,
+    pub id: String,
+    pub name: String,
     properties: IgnoredAny,
 }
