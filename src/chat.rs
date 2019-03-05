@@ -320,8 +320,11 @@ impl Handler<ServerPacketId> for ChatServer {
                     content: content,
                 };
                 for session in self.connections.values() {
-                    if let Err(err) = session.addr.do_send(client_packet.clone()) {
-                        warn!("Could not send message to client: {}", err);
+                    // check if user is actually logged in
+                    if !session.username.is_empty() {
+                        if let Err(err) = session.addr.do_send(client_packet.clone()) {
+                            warn!("Could not send message to client: {}", err);
+                        }
                     }
                 }
             }
