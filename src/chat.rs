@@ -192,9 +192,23 @@ impl Handler<Connect> for ChatServer {
             bytes[0] &= 0b0111_1111;
 
             let mut session_hash = String::with_capacity(20);
-            for &byte in bytes.into_iter().skip_while(|&&b| b == 0) {
-                session_hash.push(HEX_ALPHABET[(byte >> 4) as usize]);
-                session_hash.push(HEX_ALPHABET[(byte & 0b1111) as usize]);
+            let mut skipped_zeros = false;
+            for &byte in bytes.into_iter() {
+                let left = byte >> 4;
+                if left != 0 {
+                    skipped_zeros = true;
+                }
+                if skipped_zeros {
+                    session_hash.push(HEX_ALPHABET[left as usize]);
+                }
+
+                let right = byte & 0b1111;
+                if right != 0 {
+                    skipped_zeros = true;
+                }
+                if skipped_zeros {
+                    session_hash.push(HEX_ALPHABET[right as usize]);
+                }
             }
 
             session_hash
