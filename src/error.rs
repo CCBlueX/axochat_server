@@ -7,6 +7,8 @@ pub enum Error {
     IO(io::Error),
     CBOR(serde_cbor::error::Error),
     TOML(toml::de::Error),
+    Actix(actix_web::Error),
+    LoginFailed,
 }
 
 impl error::Error for Error {
@@ -15,6 +17,7 @@ impl error::Error for Error {
             Error::IO(err) => Some(err),
             Error::CBOR(err) => Some(err),
             Error::TOML(err) => Some(err),
+            _ => None,
         }
     }
 }
@@ -25,6 +28,8 @@ impl fmt::Display for Error {
             Error::IO(err) => write!(f, "I/O: {}", err),
             Error::CBOR(err) => write!(f, "JSON: {}", err),
             Error::TOML(err) => write!(f, "TOML: {}", err),
+            Error::Actix(err) => write!(f, "actix-web: {}", err),
+            Error::LoginFailed => write!(f, "login failed"),
         }
     }
 }
@@ -44,5 +49,11 @@ impl From<serde_cbor::error::Error> for Error {
 impl From<toml::de::Error> for Error {
     fn from(err: toml::de::Error) -> Error {
         Error::TOML(err)
+    }
+}
+
+impl From<actix_web::Error> for Error {
+    fn from(err: actix_web::Error) -> Error {
+        Error::Actix(err)
     }
 }

@@ -5,12 +5,16 @@ authors = ["frozolotl <frozolotl@protonmail.com>"]
 edition = "2018"
 
 [dependencies]
+log = "0.4"
+env_logger = "0.6"
+
 serde = { version = "1.0", features = ["derive"] }
 serde_cbor = "0.9"
 hashbrown = "0.1"
 toml = "0.4"
+rand = "0.6"
+
 actix-web = "0.7"
 actix = "0.7"
-log = "0.4"
-env_logger = "0.6"
-rand = "0.6"
+futures = "0.1"
+url = "1.7"
