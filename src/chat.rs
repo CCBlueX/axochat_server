@@ -44,6 +44,11 @@ impl Actor for Session {
             })
             .wait(ctx)
     }
+
+    fn stopping(&mut self, ctx: &mut Self::Context) -> Running {
+        ctx.state().addr.do_send(Disconnect { id: self.id });
+        Running::Stop
+    }
 }
 
 impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
@@ -53,7 +58,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
             ws::Message::Ping(msg) => ctx.pong(&msg),
             ws::Message::Pong(_msg) => {}
             ws::Message::Text(_msg) => {
-                warn!("Client sent text message.");
+                warn!("Can't decode text message sent by client.");
             }
             ws::Message::Binary(msg) => {
                 match serde_cbor::from_slice::<ServerPacket>(msg.as_ref()) {
@@ -68,7 +73,6 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
                         .wait(ctx),
                     Err(err) => {
                         warn!("Could not decode packet: {}", err);
-                        return;
                     }
                 };
             }
@@ -126,6 +130,11 @@ struct Connect {
     addr: Recipient<ClientPacket>,
 }
 
+#[derive(Message)]
+struct Disconnect {
+    id: usize,
+}
+
 impl Handler<Connect> for ChatServer {
     type Result = usize;
 
@@ -143,6 +152,14 @@ impl Handler<Connect> for ChatServer {
                 }
             }
         }
+    }
+}
+
+impl Handler<Disconnect> for ChatServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) -> () {
+        self.connections.remove(&msg.id);
     }
 }
 
