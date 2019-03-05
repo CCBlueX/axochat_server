@@ -2,15 +2,26 @@ use crate::config::Config;
 use crate::error::*;
 use log::*;
 
-use actix::*;
+use actix::{
+    dev::{MessageResponse, ResponseChannel},
+    *,
+};
 use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 
 use hashbrown::HashMap;
-use rand::Rng;
+use rand::{rngs::OsRng, Rng, RngCore, SeedableRng};
+use rand_hc::Hc128Rng;
 
 pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpResponse> {
-    ws::start(req, Session { id: 0 })
+    ws::start(
+        req,
+        Session {
+            id: 0,
+            username: None,
+            session_hash: String::new(),
+        },
+    )
 }
 
 #[derive(Clone)]
@@ -20,6 +31,8 @@ pub struct ServerState {
 
 struct Session {
     id: usize,
+    session_hash: String,
+    username: Option<String>,
 }
 
 impl Actor for Session {
@@ -34,7 +47,10 @@ impl Actor for Session {
             .into_actor(self)
             .then(|res, actor, ctx| {
                 match res {
-                    Ok(id) => actor.id = id,
+                    Ok(resp) => {
+                        actor.session_hash = resp.session_hash;
+                        actor.id = resp.id;
+                    }
                     Err(err) => {
                         warn!("Could not accept connection: {}", err);
                         ctx.stop();
@@ -105,14 +121,17 @@ impl Handler<ClientPacket> for Session {
 
 pub struct ChatServer {
     connections: HashMap<usize, Recipient<ClientPacket>>,
-    rng: rand::rngs::ThreadRng,
+    rng: rand_hc::Hc128Rng,
 }
 
 impl Default for ChatServer {
     fn default() -> ChatServer {
         ChatServer {
             connections: HashMap::new(),
-            rng: rand::thread_rng(),
+            rng: {
+                let os_rng = OsRng::new().expect("could not initialize os rng");
+                Hc128Rng::from_rng(os_rng).expect("could not initialize hc128 rng")
+            },
         }
     }
 }
@@ -122,9 +141,27 @@ impl Actor for ChatServer {
 }
 
 #[derive(Message)]
-#[rtype(usize)]
+#[rtype(ConnectResponse)]
 struct Connect {
     addr: Recipient<ClientPacket>,
+}
+
+#[derive(Message)]
+struct ConnectResponse {
+    id: usize,
+    session_hash: String,
+}
+
+impl<A, M> MessageResponse<A, M> for ConnectResponse
+where
+    A: Actor,
+    M: Message<Result = ConnectResponse>,
+{
+    fn handle<R: ResponseChannel<M>>(self, _ctx: &mut A::Context, tx: Option<R>) {
+        if let Some(tx) = tx {
+            tx.send(self);
+        }
+    }
 }
 
 #[derive(Message)]
@@ -135,12 +172,14 @@ struct Disconnect {
 /// A clientbound packet
 #[derive(Message, Serialize, Clone)]
 enum ClientPacket {
+    ServerInfo { session_hash: String },
     Message { author_id: usize, content: String },
 }
 
 /// A serverbound packet
 #[derive(Message, Deserialize)]
 enum ServerPacket {
+    Login { username: String, anonymous: bool },
     Message { content: String },
 }
 
@@ -151,10 +190,44 @@ struct ServerPacketId {
 }
 
 impl Handler<Connect> for ChatServer {
-    type Result = usize;
+    type Result = ConnectResponse;
 
-    fn handle(&mut self, msg: Connect, _ctx: &mut Context<Self>) -> usize {
+    fn handle(&mut self, msg: Connect, ctx: &mut Context<Self>) -> ConnectResponse {
         use hashbrown::hash_map::Entry;
+
+        let session_hash = {
+            const HEX_ALPHABET: [char; 16] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'];
+
+            let mut bytes = [0; 20];
+            self.rng.fill_bytes(&mut bytes);
+            // we'll just ignore one bit so we that don't have to deal with a '-' sign
+            bytes[0] &= 0b0111_1111;
+
+            let mut session_hash = String::with_capacity(20);
+            for &byte in bytes.into_iter().skip_while(|&&b| b == 0) {
+                session_hash.push(HEX_ALPHABET[(byte >> 4) as usize]);
+                session_hash.push(HEX_ALPHABET[(byte & 0b1111) as usize]);
+            }
+
+            session_hash
+        };
+
+        msg.addr
+            .send(ClientPacket::ServerInfo {
+                session_hash: session_hash.clone(),
+            })
+            .into_actor(self)
+            .then(|res, _actor, ctx| {
+                match res {
+                    Ok(()) => {}
+                    Err(err) => {
+                        warn!("Could not send session hash: {}", err);
+                        ctx.stop();
+                    }
+                }
+                fut::ok(())
+            })
+            .wait(ctx);
 
         loop {
             let id = self.rng.gen();
@@ -163,7 +236,7 @@ impl Handler<Connect> for ChatServer {
                 Entry::Vacant(v) => {
                     v.insert(msg.addr.clone());
                     debug!("User with id {:x} joined the chat.", id);
-                    return id;
+                    return ConnectResponse { id, session_hash };
                 }
             }
         }
@@ -187,6 +260,10 @@ impl Handler<ServerPacketId> for ChatServer {
         _ctx: &mut Context<Self>,
     ) {
         match packet {
+            ServerPacket::Login {
+                anonymous,
+                username,
+            } => {}
             ServerPacket::Message { content } => {
                 info!("{:x} has written `{}`.", user_id, content);
                 let client_packet = ClientPacket::Message {

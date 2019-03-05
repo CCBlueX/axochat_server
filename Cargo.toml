@@ -13,6 +13,7 @@ serde_cbor = "0.9"
 hashbrown = "0.1"
 toml = "0.4"
 rand = "0.6"
+rand_hc = "0.1"
 
 actix-web = "0.7"
 actix = "0.7"
