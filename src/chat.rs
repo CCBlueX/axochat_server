@@ -135,18 +135,13 @@ struct Disconnect {
 /// A clientbound packet
 #[derive(Message, Serialize, Clone)]
 enum ClientPacket {
-    Message {
-        author_id: usize,
-        content: String,
-    }
+    Message { author_id: usize, content: String },
 }
 
 /// A serverbound packet
 #[derive(Message, Deserialize)]
 enum ServerPacket {
-    Message {
-        content: String,
-    },
+    Message { content: String },
 }
 
 #[derive(Message)]
@@ -186,7 +181,11 @@ impl Handler<Disconnect> for ChatServer {
 impl Handler<ServerPacketId> for ChatServer {
     type Result = ();
 
-    fn handle(&mut self, ServerPacketId { user_id, packet }: ServerPacketId, _ctx: &mut Context<Self>) {
+    fn handle(
+        &mut self,
+        ServerPacketId { user_id, packet }: ServerPacketId,
+        _ctx: &mut Context<Self>,
+    ) {
         match packet {
             ServerPacket::Message { content } => {
                 let client_packet = ClientPacket::Message {
