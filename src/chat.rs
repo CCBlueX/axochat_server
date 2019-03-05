@@ -188,7 +188,7 @@ impl Handler<ServerPacketId> for ChatServer {
     ) {
         match packet {
             ServerPacket::Message { content } => {
-                info!("{} has written `{}`.", user_id, content);
+                info!("{:x} has written `{}`.", user_id, content);
                 let client_packet = ClientPacket::Message {
                     author_id: user_id,
                     content: content,
