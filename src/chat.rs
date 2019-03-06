@@ -330,21 +330,36 @@ impl Handler<ServerPacketId> for ChatServer {
                     }
                 }
             }
-            ServerPacket::PrivateMessage { receiver_id, content } => {
+            ServerPacket::PrivateMessage {
+                receiver_id,
+                content,
+            } => {
                 info!("{:x} has written to `{:x}`.", user_id, receiver_id);
-                debug!("{:x} has written `{}` to `{:x}`.", user_id, content, receiver_id);
+                debug!(
+                    "{:x} has written `{}` to `{:x}`.",
+                    user_id, content, receiver_id
+                );
                 let sender_session = self
                     .connections
                     .get(&user_id)
                     .expect("could not find connection");
                 if sender_session.username.is_empty() {
-                    debug!("{:x} tried to send private message, but is not logged in.", user_id);
+                    debug!(
+                        "{:x} tried to send private message, but is not logged in.",
+                        user_id
+                    );
                     return;
                 }
-                let receiver_session = self
-                    .connections
-                    .get(&receiver_id)
-                    .expect("could not find connection");
+                let receiver_session = match self.connections.get(&receiver_id) {
+                    Some(ses) => ses,
+                    None => {
+                        debug!(
+                            "{:x} tried to write to non-existing user `{:x}`.",
+                            user_id, receiver_id
+                        );
+                        return;
+                    }
+                };
 
                 let author_name = if sender_session.anonymous {
                     None
