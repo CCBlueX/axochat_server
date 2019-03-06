@@ -37,3 +37,35 @@ pub struct AuthInfo {
     pub name: String,
     properties: IgnoredAny,
 }
+
+pub fn encode_sha1_bytes(bytes: &[u8; 20]) -> String {
+    const HEX_ALPHABET: [char; 16] = [
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+    ];
+
+    let mut buf = String::with_capacity(40);
+    let mut skipped_zeros = false;
+    for &byte in bytes.into_iter() {
+        let left = byte >> 4;
+        if left != 0 {
+            skipped_zeros = true;
+        }
+        if skipped_zeros {
+            buf.push(HEX_ALPHABET[left as usize]);
+        }
+
+        let right = byte & 0b1111;
+        if right != 0 {
+            skipped_zeros = true;
+        }
+        if skipped_zeros {
+            buf.push(HEX_ALPHABET[right as usize]);
+        }
+    }
+
+    if buf.is_empty() {
+        buf.push(HEX_ALPHABET[0]);
+    }
+
+    buf
+}

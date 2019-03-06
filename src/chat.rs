@@ -182,36 +182,12 @@ impl Handler<Connect> for ChatServer {
         use hashbrown::hash_map::Entry;
 
         let session_hash = {
-            const HEX_ALPHABET: [char; 16] = [
-                '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
-            ];
-
             let mut bytes = [0; 20];
             self.rng.fill_bytes(&mut bytes);
             // we'll just ignore one bit so we that don't have to deal with a '-' sign
             bytes[0] &= 0b0111_1111;
 
-            let mut session_hash = String::with_capacity(20);
-            let mut skipped_zeros = false;
-            for &byte in bytes.into_iter() {
-                let left = byte >> 4;
-                if left != 0 {
-                    skipped_zeros = true;
-                }
-                if skipped_zeros {
-                    session_hash.push(HEX_ALPHABET[left as usize]);
-                }
-
-                let right = byte & 0b1111;
-                if right != 0 {
-                    skipped_zeros = true;
-                }
-                if skipped_zeros {
-                    session_hash.push(HEX_ALPHABET[right as usize]);
-                }
-            }
-
-            session_hash
+            crate::auth::encode_sha1_bytes(&bytes)
         };
 
         msg.addr
