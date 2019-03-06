@@ -2,6 +2,7 @@ mod auth;
 mod chat;
 mod config;
 mod error;
+mod message;
 
 use error::*;
 use log::*;
