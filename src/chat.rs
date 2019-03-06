@@ -284,12 +284,10 @@ impl Handler<ServerPacketId> for ChatServer {
                     }
                 }
 
-                let session = self
-                    .connections
-                    .get_mut(&user_id)
-                    .expect("could not find connection");
-                session.username = username;
-                session.anonymous = anonymous;
+                if let Some(session) = self.connections.get_mut(&user_id) {
+                    session.username = username;
+                    session.anonymous = anonymous;
+                }
             }
             ServerPacket::Message { content } => {
                 info!("{:x} has written `{}`.", user_id, content);
