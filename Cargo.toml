@@ -9,7 +9,7 @@ log = "0.4"
 env_logger = "0.6"
 
 serde = { version = "1.0", features = ["derive"] }
-serde_cbor = "0.9"
+serde_json = "1.0"
 hashbrown = "0.1"
 toml = "0.4"
 rand = "0.6"

@@ -64,27 +64,25 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
         match msg {
             ws::Message::Ping(msg) => ctx.pong(&msg),
             ws::Message::Pong(_msg) => {}
-            ws::Message::Text(_msg) => {
-                warn!("Can't decode text messages.");
-            }
-            ws::Message::Binary(msg) => {
-                match serde_cbor::from_slice::<ServerPacket>(msg.as_ref()) {
-                    Ok(packet) => ctx
-                        .state()
-                        .addr
-                        .send(ServerPacketId {
-                            user_id: self.id,
-                            packet,
-                        })
-                        .into_actor(self)
-                        .map_err(|err, _actor, _ctx| {
-                            warn!("Could not decode packet: {}", err);
-                        })
-                        .wait(ctx),
-                    Err(err) => {
+            ws::Message::Text(msg) => match serde_json::from_slice::<ServerPacket>(msg.as_ref()) {
+                Ok(packet) => ctx
+                    .state()
+                    .addr
+                    .send(ServerPacketId {
+                        user_id: self.id,
+                        packet,
+                    })
+                    .into_actor(self)
+                    .map_err(|err, _actor, _ctx| {
                         warn!("Could not decode packet: {}", err);
-                    }
-                };
+                    })
+                    .wait(ctx),
+                Err(err) => {
+                    warn!("Could not decode packet: {}", err);
+                }
+            },
+            ws::Message::Binary(_msg) => {
+                warn!("Can't decode binary messages.");
             }
             ws::Message::Close(Some(reason)) => {
                 info!(
@@ -105,8 +103,8 @@ impl Handler<ClientPacket> for Session {
     type Result = ();
 
     fn handle(&mut self, msg: ClientPacket, ctx: &mut Self::Context) {
-        let bytes = serde_cbor::to_vec(&msg).expect("could not encode message");
-        ctx.binary(bytes);
+        let bytes = serde_json::to_vec(&msg).expect("could not encode message");
+        ctx.text(bytes);
     }
 }
 
