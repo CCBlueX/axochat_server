@@ -8,6 +8,7 @@ pub enum Error {
     CBOR(serde_cbor::error::Error),
     TOML(toml::de::Error),
     Actix(actix_web::Error),
+    OpenSSL(openssl::error::ErrorStack),
     LoginFailed,
 }
 
@@ -17,6 +18,7 @@ impl error::Error for Error {
             Error::IO(err) => Some(err),
             Error::CBOR(err) => Some(err),
             Error::TOML(err) => Some(err),
+            Error::OpenSSL(err) => Some(err),
             _ => None,
         }
     }
@@ -29,6 +31,7 @@ impl fmt::Display for Error {
             Error::CBOR(err) => write!(f, "JSON: {}", err),
             Error::TOML(err) => write!(f, "TOML: {}", err),
             Error::Actix(err) => write!(f, "actix-web: {}", err),
+            Error::OpenSSL(err) => write!(f, "OpenSSL: {}", err),
             Error::LoginFailed => write!(f, "login failed"),
         }
     }
@@ -55,5 +58,11 @@ impl From<toml::de::Error> for Error {
 impl From<actix_web::Error> for Error {
     fn from(err: actix_web::Error) -> Error {
         Error::Actix(err)
+    }
+}
+
+impl From<openssl::error::ErrorStack> for Error {
+    fn from(err: openssl::error::ErrorStack) -> Error {
+        Error::OpenSSL(err)
     }
 }

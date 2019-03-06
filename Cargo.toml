@@ -15,7 +15,8 @@ toml = "0.4"
 rand = "0.6"
 rand_hc = "0.1"
 
-actix-web = "0.7"
+openssl = { version = "0.10", features = ["v110"] }
+actix-web = { version = "0.7", features = ["alpn"] }
 actix = "0.7"
 futures = "0.1"
 url = "1.7"

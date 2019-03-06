@@ -18,12 +18,20 @@ pub struct Config {
 pub struct NetConfig {
     /// The address the server will listen at.
     pub address: SocketAddr,
+
+    /// The SSL certificate file.
+    pub cert_file: Option<PathBuf>,
+    /// The SSL key file.
+    /// If the extension is `pem`, `PEM` format will be used, otherwise `ASN1`.
+    pub key_file: Option<PathBuf>,
 }
 
 impl Default for NetConfig {
     fn default() -> NetConfig {
         NetConfig {
             address: ([127, 0, 0, 1], 8080).into(),
+            cert_file: None,
+            key_file: None,
         }
     }
 }
