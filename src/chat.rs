@@ -65,7 +65,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
             ws::Message::Ping(msg) => ctx.pong(&msg),
             ws::Message::Pong(_msg) => {}
             ws::Message::Text(_msg) => {
-                warn!("Can't decode text message sent by client.");
+                warn!("Can't decode text messages.");
             }
             ws::Message::Binary(msg) => {
                 match serde_cbor::from_slice::<ServerPacket>(msg.as_ref()) {
@@ -258,7 +258,7 @@ impl Handler<ServerPacketId> for ChatServer {
                     .get(&user_id)
                     .expect("could not find connection");
                 if !session.username.is_empty() {
-                    debug!("{:x} tried to log in multiple times.", user_id);
+                    info!("{:x} tried to log in multiple times.", user_id);
                     return;
                 }
 
@@ -306,7 +306,7 @@ impl Handler<ServerPacketId> for ChatServer {
                     .get(&user_id)
                     .expect("could not find connection");
                 if session.username.is_empty() {
-                    debug!("{:x} tried to send message, but is not logged in.", user_id);
+                    info!("{:x} tried to send message, but is not logged in.", user_id);
                     return;
                 }
 
@@ -344,7 +344,7 @@ impl Handler<ServerPacketId> for ChatServer {
                     .get(&user_id)
                     .expect("could not find connection");
                 if sender_session.username.is_empty() {
-                    debug!(
+                    info!(
                         "{:x} tried to send private message, but is not logged in.",
                         user_id
                     );
