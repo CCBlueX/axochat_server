@@ -58,8 +58,7 @@ impl Handler<Connect> for ChatServer {
                     v.insert(SessionState {
                         addr: msg.addr.clone(),
                         session_hash,
-                        username: String::new(),
-                        anonymous: true,
+                        info: None,
                         rate_limiter: RateLimiter::new(self.config.message.clone()),
                     });
                     debug!("User with id {:x} joined the chat.", id);

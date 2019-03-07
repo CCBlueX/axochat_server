@@ -103,6 +103,8 @@ impl Authenticator {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserInfo {
-    username: String,
-    anonymous: bool,
+    pub username: String,
+    pub anonymous: bool,
+    /// Should this user allow private messages?
+    pub allow_messages: bool,
 }

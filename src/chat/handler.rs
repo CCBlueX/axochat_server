@@ -15,10 +15,7 @@ impl Handler<ServerPacketId> for ChatServer {
         ctx: &mut Context<Self>,
     ) {
         match packet {
-            ServerPacket::Login {
-                anonymous,
-                username,
-            } => {
+            ServerPacket::Login(info) => {
                 fn send_login_failed(
                     user_id: usize,
                     err: Error,
@@ -43,8 +40,8 @@ impl Handler<ServerPacketId> for ChatServer {
                         .do_send(ClientPacket::Error(ClientError::AlreadyLoggedIn))
                         .ok();
                     return;
-                } else if self.users.contains_key(&username) {
-                    info!("{:x} is already logged in as `{}`.", user_id, username);
+                } else if self.users.contains_key(&info.username) {
+                    info!("{:x} is already logged in as `{}`.", user_id, info.username);
                     session
                         .addr
                         .do_send(ClientPacket::Error(ClientError::AlreadyLoggedIn))
@@ -52,7 +49,7 @@ impl Handler<ServerPacketId> for ChatServer {
                     return;
                 }
 
-                match authenticate(&username, &session.session_hash) {
+                match authenticate(&info.username, &session.session_hash) {
                     Ok(fut) => {
                         fut.into_actor(self)
                             .then(move |res, actor, ctx| {
@@ -76,9 +73,8 @@ impl Handler<ServerPacketId> for ChatServer {
                 }
 
                 if let Some(session) = self.connections.get_mut(&user_id) {
-                    self.users.insert(username.clone(), user_id);
-                    session.username = username;
-                    session.anonymous = anonymous;
+                    self.users.insert(info.username.clone(), user_id);
+                    session.info = Some(info);
                 }
             }
             ServerPacket::Message { content } => {
@@ -117,15 +113,9 @@ impl Handler<ServerPacketId> for ChatServer {
                     }
                 }
             }
-            ServerPacket::PrivateMessage {
-                receiver_id,
-                content,
-            } => {
-                info!("{:x} has written to `{:x}`.", user_id, receiver_id);
-                debug!(
-                    "{:x} has written `{}` to `{:x}`.",
-                    user_id, content, receiver_id
-                );
+            ServerPacket::PrivateMessage { receiver, content } => {
+                info!("{:x} has written to `{}`.", user_id, receiver);
+                debug!("{:x} has written `{}` to `{}`.", user_id, content, receiver);
                 let sender_session = self
                     .connections
                     .get(&user_id)
@@ -138,12 +128,12 @@ impl Handler<ServerPacketId> for ChatServer {
                         .ok();
                     return;
                 }
-                let receiver_session = match self.connections.get(&receiver_id) {
+                let receiver_session = match self.get_connection(&receiver) {
                     Some(ses) => ses,
                     None => {
                         debug!(
-                            "{:x} tried to write to non-existing user `{:x}`.",
-                            user_id, receiver_id
+                            "{:x} tried to write to non-existing user `{}`.",
+                            user_id, receiver
                         );
                         return;
                     }
