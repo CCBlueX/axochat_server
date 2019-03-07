@@ -3,10 +3,7 @@ use crate::error::*;
 use log::*;
 
 use crate::auth::authenticate;
-use actix::{
-    dev::{MessageResponse, ResponseChannel},
-    *,
-};
+use actix::*;
 use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 
@@ -234,7 +231,7 @@ impl Handler<Connect> for ChatServer {
 impl Handler<Disconnect> for ChatServer {
     type Result = ();
 
-    fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) -> () {
+    fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) {
         self.connections.remove(&msg.id);
     }
 }
@@ -322,7 +319,7 @@ impl Handler<ServerPacketId> for ChatServer {
                 let client_packet = ClientPacket::Message {
                     author_id: user_id,
                     author_name,
-                    content: content,
+                    content,
                 };
                 for session in self.connections.values() {
                     // check if user is actually logged in
@@ -375,7 +372,7 @@ impl Handler<ServerPacketId> for ChatServer {
                     let client_packet = ClientPacket::PrivateMessage {
                         author_id: user_id,
                         author_name,
-                        content: content,
+                        content,
                     };
                     if let Err(err) = receiver_session.addr.do_send(client_packet) {
                         warn!("Could not send private message to client: {}", err);

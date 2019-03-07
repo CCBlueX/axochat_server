@@ -1,8 +1,5 @@
 use crate::config::MsgConfig;
-use std::{
-    collections::VecDeque,
-    time::{Duration, Instant},
-};
+use std::{collections::VecDeque, time::Instant};
 
 pub struct Ratelimiter {
     buf: VecDeque<Instant>,

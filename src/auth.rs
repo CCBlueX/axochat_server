@@ -45,7 +45,7 @@ pub fn encode_sha1_bytes(bytes: &[u8; 20]) -> String {
 
     let mut buf = String::with_capacity(40);
     let mut skipped_zeros = false;
-    for &byte in bytes.into_iter() {
+    for &byte in bytes.iter() {
         let left = byte >> 4;
         if left != 0 {
             skipped_zeros = true;
