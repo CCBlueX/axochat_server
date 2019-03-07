@@ -1,13 +1,13 @@
 use log::*;
 
-use super::{ChatServer, ClientPacket, SessionState};
+use super::{ChatServer, ClientPacket, Id, SessionState};
 use actix::*;
 
 use crate::message::RateLimiter;
 use rand::{Rng, RngCore};
 
 #[derive(Message)]
-#[rtype(usize)]
+#[rtype(Id)]
 pub(in crate::chat) struct Connect {
     addr: Recipient<ClientPacket>,
 }
@@ -19,9 +19,9 @@ impl Connect {
 }
 
 impl Handler<Connect> for ChatServer {
-    type Result = usize;
+    type Result = Id;
 
-    fn handle(&mut self, msg: Connect, ctx: &mut Context<Self>) -> usize {
+    fn handle(&mut self, msg: Connect, ctx: &mut Context<Self>) -> Id {
         use hashbrown::hash_map::Entry;
 
         let session_hash = {

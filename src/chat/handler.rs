@@ -1,4 +1,4 @@
-use super::{ChatServer, ClientPacket, ServerPacket, ServerPacketId};
+use super::{ChatServer, ClientPacket, Id, ServerPacket, ServerPacketId};
 
 use crate::error::*;
 use log::*;
@@ -17,7 +17,7 @@ impl Handler<ServerPacketId> for ChatServer {
         match packet {
             ServerPacket::Login(info) => {
                 fn send_login_failed(
-                    user_id: usize,
+                    user_id: Id,
                     err: Error,
                     session: &Recipient<ClientPacket>,
                     ctx: &mut Context<ChatServer>,

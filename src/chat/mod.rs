@@ -16,6 +16,8 @@ use hashbrown::HashMap;
 use rand::{rngs::OsRng, SeedableRng};
 use rand_hc::Hc128Rng;
 
+type Id = u32;
+
 pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpResponse> {
     ws::start(req, session::Session::new(0))
 }
@@ -26,8 +28,8 @@ pub struct ServerState {
 }
 
 pub struct ChatServer {
-    connections: HashMap<usize, SessionState>,
-    users: HashMap<String, usize>,
+    connections: HashMap<Id, SessionState>,
+    users: HashMap<String, Id>,
     rng: rand_hc::Hc128Rng,
     config: Config,
 }
@@ -94,7 +96,7 @@ impl SessionState {
 
 #[derive(Message)]
 struct Disconnect {
-    id: usize,
+    id: Id,
 }
 
 /// A clientbound packet
@@ -104,12 +106,12 @@ enum ClientPacket {
         session_hash: String,
     },
     Message {
-        author_id: usize,
+        author_id: Id,
         author_name: Option<String>,
         content: String,
     },
     PrivateMessage {
-        author_id: usize,
+        author_id: Id,
         author_name: Option<String>,
         content: String,
     },
@@ -126,13 +128,13 @@ enum ServerPacket {
 
 #[derive(Message)]
 struct ServerPacketId {
-    user_id: usize,
+    user_id: Id,
     packet: ServerPacket,
 }
 
 #[derive(Deserialize)]
 enum AtUser {
-    Id(usize),
+    Id(Id),
     Name(String),
 }
 
