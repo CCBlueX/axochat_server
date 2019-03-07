@@ -19,6 +19,8 @@ impl RateLimiter {
     pub fn check_new_message(&mut self) -> bool {
         let now = Instant::now();
         let limit = now - self.cfg.count_duration;
+
+        #[allow(clippy::op_ref)]
         let last_index = self
             .buf
             .iter()
