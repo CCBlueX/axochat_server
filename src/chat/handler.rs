@@ -132,7 +132,7 @@ impl Handler<ServerPacketId> for ChatServer {
                     .expect("could not find connection");
                 if !sender_session.is_logged_in() {
                     info!("{:x} is not logged in.", user_id);
-                    session
+                    sender_session
                         .addr
                         .do_send(ClientPacket::Error(ClientError::NotLoggedIn))
                         .ok();
