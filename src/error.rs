@@ -79,6 +79,7 @@ impl From<ClientError> for Error {
 #[derive(Debug, Clone, Serialize)]
 pub enum ClientError {
     LoginFailed,
+    RateLimited,
 }
 
 impl error::Error for ClientError {}
@@ -87,6 +88,7 @@ impl fmt::Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ClientError::LoginFailed => write!(f, "login failed"),
+            ClientError::RateLimited => write!(f, "rate limited"),
         }
     }
 }

@@ -73,10 +73,15 @@ impl Handler<ServerPacketId> for ChatServer {
                 info!("{:x} has written `{}`.", user_id, content);
                 let session = self
                     .connections
-                    .get(&user_id)
+                    .get_mut(&user_id)
                     .expect("could not find connection");
                 if session.username.is_empty() {
                     info!("{:x} tried to send message, but is not logged in.", user_id);
+                    return;
+                }
+                if session.rate_limiter.check_new_message() {
+                    info!("{:x} tried to send message, but was rate limited.", user_id);
+                    session.addr.do_send(ClientPacket::Error(ClientError::RateLimited)).ok();
                     return;
                 }
 

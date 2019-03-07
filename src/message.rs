@@ -1,14 +1,14 @@
 use crate::config::MsgConfig;
 use std::{collections::VecDeque, time::Instant};
 
-pub struct Ratelimiter {
+pub struct RateLimiter {
     buf: VecDeque<Instant>,
     cfg: MsgConfig,
 }
 
-impl Ratelimiter {
-    pub fn new(cfg: MsgConfig) -> Ratelimiter {
-        Ratelimiter {
+impl RateLimiter {
+    pub fn new(cfg: MsgConfig) -> RateLimiter {
+        RateLimiter {
             buf: VecDeque::with_capacity(cfg.max_messages),
             cfg,
         }

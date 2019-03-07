@@ -17,7 +17,8 @@ fn main() -> Result<()> {
     debug!("Read configuration file: {:?}", config);
 
     let system = System::new("axochat");
-    let server = Arbiter::start(|_| chat::ChatServer::default());
+    let server_config = config.clone();
+    let server = Arbiter::start(|_| chat::ChatServer::new(server_config));
 
     let server = HttpServer::new(move || {
         let server_state = chat::ServerState {

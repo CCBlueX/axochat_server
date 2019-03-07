@@ -4,6 +4,7 @@ use super::{ChatServer, ClientPacket, SessionState};
 use actix::*;
 
 use rand::{Rng, RngCore};
+use crate::message::RateLimiter;
 
 #[derive(Message)]
 #[rtype(usize)]
@@ -59,6 +60,7 @@ impl Handler<Connect> for ChatServer {
                         session_hash,
                         username: String::new(),
                         anonymous: true,
+                        rate_limiter: RateLimiter::new(self.config.message.clone()),
                     });
                     debug!("User with id {:x} joined the chat.", id);
                     return id;

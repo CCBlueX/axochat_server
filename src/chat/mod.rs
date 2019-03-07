@@ -3,6 +3,7 @@ mod handler;
 mod session;
 
 use crate::error::*;
+use crate::config::Config;
 
 use actix::*;
 use actix_web::{ws, HttpRequest, HttpResponse};
@@ -11,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use hashbrown::HashMap;
 use rand::{rngs::OsRng, SeedableRng};
 use rand_hc::Hc128Rng;
+use crate::message::RateLimiter;
 
 pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpResponse> {
     ws::start(req, session::Session::new(0))
@@ -24,16 +26,18 @@ pub struct ServerState {
 pub struct ChatServer {
     connections: HashMap<usize, SessionState>,
     rng: rand_hc::Hc128Rng,
+    config: Config,
 }
 
-impl Default for ChatServer {
-    fn default() -> ChatServer {
+impl ChatServer {
+    pub fn new(config: Config) -> ChatServer {
         ChatServer {
             connections: HashMap::new(),
             rng: {
                 let os_rng = OsRng::new().expect("could not initialize os rng");
                 Hc128Rng::from_rng(os_rng).expect("could not initialize hc128 rng")
             },
+            config,
         }
     }
 }
@@ -47,6 +51,7 @@ struct SessionState {
     session_hash: String,
     username: String,
     anonymous: bool,
+    rate_limiter: RateLimiter,
 }
 
 impl SessionState {
