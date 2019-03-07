@@ -38,6 +38,17 @@ impl Handler<ServerPacketId> for ChatServer {
                     .expect("could not find connection");
                 if !session.is_logged_in() {
                     info!("{:x} tried to log in multiple times.", user_id);
+                    session
+                        .addr
+                        .do_send(ClientPacket::Error(ClientError::AlreadyLoggedIn))
+                        .ok();
+                    return;
+                } else if self.users.contains_key(&username) {
+                    info!("{:x} is already logged in as `{}`.", user_id, username);
+                    session
+                        .addr
+                        .do_send(ClientPacket::Error(ClientError::AlreadyLoggedIn))
+                        .ok();
                     return;
                 }
 
@@ -65,6 +76,7 @@ impl Handler<ServerPacketId> for ChatServer {
                 }
 
                 if let Some(session) = self.connections.get_mut(&user_id) {
+                    self.users.insert(username.clone(), user_id);
                     session.username = username;
                     session.anonymous = anonymous;
                 }
@@ -76,12 +88,19 @@ impl Handler<ServerPacketId> for ChatServer {
                     .get_mut(&user_id)
                     .expect("could not find connection");
                 if session.username.is_empty() {
-                    info!("{:x} tried to send message, but is not logged in.", user_id);
+                    info!("{:x} is not logged in.", user_id);
+                    session
+                        .addr
+                        .do_send(ClientPacket::Error(ClientError::NotLoggedIn))
+                        .ok();
                     return;
                 }
                 if session.rate_limiter.check_new_message() {
                     info!("{:x} tried to send message, but was rate limited.", user_id);
-                    session.addr.do_send(ClientPacket::Error(ClientError::RateLimited)).ok();
+                    session
+                        .addr
+                        .do_send(ClientPacket::Error(ClientError::RateLimited))
+                        .ok();
                     return;
                 }
 
@@ -112,10 +131,11 @@ impl Handler<ServerPacketId> for ChatServer {
                     .get(&user_id)
                     .expect("could not find connection");
                 if !sender_session.is_logged_in() {
-                    info!(
-                        "{:x} tried to send private message, but is not logged in.",
-                        user_id
-                    );
+                    info!("{:x} is not logged in.", user_id);
+                    session
+                        .addr
+                        .do_send(ClientPacket::Error(ClientError::NotLoggedIn))
+                        .ok();
                     return;
                 }
                 let receiver_session = match self.connections.get(&receiver_id) {

@@ -25,6 +25,7 @@ pub struct ServerState {
 
 pub struct ChatServer {
     connections: HashMap<usize, SessionState>,
+    users: HashMap<String, usize>,
     rng: rand_hc::Hc128Rng,
     config: Config,
 }
@@ -33,6 +34,7 @@ impl ChatServer {
     pub fn new(config: Config) -> ChatServer {
         ChatServer {
             connections: HashMap::new(),
+            users: HashMap::new(),
             rng: {
                 let os_rng = OsRng::new().expect("could not initialize os rng");
                 Hc128Rng::from_rng(os_rng).expect("could not initialize hc128 rng")
@@ -110,6 +112,8 @@ impl Handler<Disconnect> for ChatServer {
     type Result = ();
 
     fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) {
-        self.connections.remove(&msg.id);
+        if let Some(session) = self.connections.remove(&msg.id) {
+            self.users.remove(&session.username);
+        }
     }
 }
