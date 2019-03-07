@@ -36,7 +36,7 @@ impl Handler<ServerPacketId> for ChatServer {
                     .connections
                     .get(&user_id)
                     .expect("could not find connection");
-                if !session.is_logged_in() {
+                if session.is_logged_in() {
                     info!("{:x} tried to log in multiple times.", user_id);
                     session
                         .addr
@@ -87,7 +87,7 @@ impl Handler<ServerPacketId> for ChatServer {
                     .connections
                     .get_mut(&user_id)
                     .expect("could not find connection");
-                if session.username.is_empty() {
+                if !session.is_logged_in() {
                     info!("{:x} is not logged in.", user_id);
                     session
                         .addr
