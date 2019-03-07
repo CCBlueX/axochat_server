@@ -87,11 +87,14 @@ impl From<ClientError> for Error {
 /// A client-facing error.
 #[derive(Debug, Clone, Serialize)]
 pub enum ClientError {
+    NotSupported,
     LoginFailed,
     NotLoggedIn,
     AlreadyLoggedIn,
+    MojangRequestMissing,
     RateLimited,
     PrivateMessageNotAccepted,
+    Internal,
 }
 
 impl error::Error for ClientError {}
@@ -99,11 +102,14 @@ impl error::Error for ClientError {}
 impl fmt::Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            ClientError::NotSupported => write!(f, "method not supported"),
             ClientError::LoginFailed => write!(f, "login failed"),
             ClientError::NotLoggedIn => write!(f, "not logged in"),
             ClientError::AlreadyLoggedIn => write!(f, "already logged in"),
+            ClientError::MojangRequestMissing => write!(f, "mojang request missing"),
             ClientError::RateLimited => write!(f, "rate limited"),
             ClientError::PrivateMessageNotAccepted => write!(f, "private message not accepted"),
+            ClientError::Internal => write!(f, "internal error"),
         }
     }
 }

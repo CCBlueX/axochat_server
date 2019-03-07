@@ -10,7 +10,7 @@ use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::auth::UserInfo;
+use crate::auth::{Authenticator, UserInfo};
 use crate::message::RateLimiter;
 use hashbrown::HashMap;
 use rand::{rngs::OsRng, SeedableRng};
@@ -32,6 +32,7 @@ pub struct ChatServer {
     users: HashMap<String, Id>,
     rng: rand_hc::Hc128Rng,
     config: Config,
+    authenticator: Option<Authenticator>,
 }
 
 impl ChatServer {
@@ -43,6 +44,10 @@ impl ChatServer {
                 let os_rng = OsRng::new().expect("could not initialize os rng");
                 Hc128Rng::from_rng(os_rng).expect("could not initialize hc128 rng")
             },
+            authenticator: config
+                .auth
+                .as_ref()
+                .map(|auth| Authenticator::new(&auth).expect("could not initialize authenticator")),
             config,
         }
     }
@@ -76,7 +81,7 @@ impl Handler<Disconnect> for ChatServer {
 
 struct SessionState {
     addr: Recipient<ClientPacket>,
-    session_hash: String,
+    session_hash: Option<String>,
     rate_limiter: RateLimiter,
     info: Option<UserInfo>,
 }
@@ -102,9 +107,11 @@ struct Disconnect {
 /// A clientbound packet
 #[derive(Message, Serialize, Clone)]
 enum ClientPacket {
-    ServerInfo {
+    MojangInfo {
         session_hash: String,
     },
+    NewJWT(String),
+    LoginSuccess,
     Message {
         author_id: Id,
         author_name: Option<String>,
@@ -121,7 +128,10 @@ enum ClientPacket {
 /// A serverbound packet
 #[derive(Message, Deserialize)]
 enum ServerPacket {
-    Login(UserInfo),
+    RequestMojangInfo,
+    LoginMojang(UserInfo),
+    LoginJWT(String),
+    RequestJWT,
     Message { content: String },
     PrivateMessage { receiver: AtUser, content: String },
 }

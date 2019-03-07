@@ -96,8 +96,8 @@ impl Authenticator {
         }
     }
 
-    pub fn new_token(&self, info: UserInfo) -> Result<String> {
-        jsonwebtoken::encode(&self.header, &info, &self.key).map_err(|err| err.into())
+    pub fn new_token(&self, info: &UserInfo) -> Result<String> {
+        jsonwebtoken::encode(&self.header, info, &self.key).map_err(|err| err.into())
     }
 }
 

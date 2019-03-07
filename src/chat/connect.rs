@@ -4,7 +4,7 @@ use super::{ChatServer, ClientPacket, Id, SessionState};
 use actix::*;
 
 use crate::message::RateLimiter;
-use rand::{Rng, RngCore};
+use rand::Rng;
 
 #[derive(Message)]
 #[rtype(Id)]
@@ -21,34 +21,8 @@ impl Connect {
 impl Handler<Connect> for ChatServer {
     type Result = Id;
 
-    fn handle(&mut self, msg: Connect, ctx: &mut Context<Self>) -> Id {
+    fn handle(&mut self, msg: Connect, _ctx: &mut Context<Self>) -> Id {
         use hashbrown::hash_map::Entry;
-
-        let session_hash = {
-            let mut bytes = [0; 20];
-            self.rng.fill_bytes(&mut bytes);
-            // we'll just ignore one bit so we that don't have to deal with a '-' sign
-            bytes[0] &= 0b0111_1111;
-
-            crate::auth::encode_sha1_bytes(&bytes)
-        };
-
-        msg.addr
-            .send(ClientPacket::ServerInfo {
-                session_hash: session_hash.clone(),
-            })
-            .into_actor(self)
-            .then(|res, _actor, ctx| {
-                match res {
-                    Ok(()) => {}
-                    Err(err) => {
-                        warn!("Could not send session hash: {}", err);
-                        ctx.stop();
-                    }
-                }
-                fut::ok(())
-            })
-            .wait(ctx);
 
         loop {
             let id = self.rng.gen();
@@ -57,7 +31,7 @@ impl Handler<Connect> for ChatServer {
                 Entry::Vacant(v) => {
                     v.insert(SessionState {
                         addr: msg.addr.clone(),
-                        session_hash,
+                        session_hash: None,
                         info: None,
                         rate_limiter: RateLimiter::new(self.config.message.clone()),
                     });
