@@ -1,3 +1,5 @@
+mod connect;
+
 use crate::config::Config;
 use crate::error::*;
 use log::*;
@@ -6,9 +8,10 @@ use crate::auth::authenticate;
 use actix::*;
 use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
+use self::connect::Connect;
 
 use hashbrown::HashMap;
-use rand::{rngs::OsRng, Rng, RngCore, SeedableRng};
+use rand::{rngs::OsRng, SeedableRng};
 use rand_hc::Hc128Rng;
 
 pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpResponse> {
@@ -30,9 +33,7 @@ impl Actor for Session {
     fn started(&mut self, ctx: &mut Self::Context) {
         ctx.state()
             .addr
-            .send(Connect {
-                addr: ctx.address().recipient(),
-            })
+            .send(Connect::new(ctx.address().recipient()))
             .into_actor(self)
             .then(|res, actor, ctx| {
                 match res {
@@ -148,12 +149,6 @@ impl SessionState {
 }
 
 #[derive(Message)]
-#[rtype(usize)]
-struct Connect {
-    addr: Recipient<ClientPacket>,
-}
-
-#[derive(Message)]
 struct Disconnect {
     id: usize,
 }
@@ -189,57 +184,6 @@ enum ServerPacket {
 struct ServerPacketId {
     user_id: usize,
     packet: ServerPacket,
-}
-
-impl Handler<Connect> for ChatServer {
-    type Result = usize;
-
-    fn handle(&mut self, msg: Connect, ctx: &mut Context<Self>) -> usize {
-        use hashbrown::hash_map::Entry;
-
-        let session_hash = {
-            let mut bytes = [0; 20];
-            self.rng.fill_bytes(&mut bytes);
-            // we'll just ignore one bit so we that don't have to deal with a '-' sign
-            bytes[0] &= 0b0111_1111;
-
-            crate::auth::encode_sha1_bytes(&bytes)
-        };
-
-        msg.addr
-            .send(ClientPacket::ServerInfo {
-                session_hash: session_hash.clone(),
-            })
-            .into_actor(self)
-            .then(|res, _actor, ctx| {
-                match res {
-                    Ok(()) => {}
-                    Err(err) => {
-                        warn!("Could not send session hash: {}", err);
-                        ctx.stop();
-                    }
-                }
-                fut::ok(())
-            })
-            .wait(ctx);
-
-        loop {
-            let id = self.rng.gen();
-            match self.connections.entry(id) {
-                Entry::Occupied(_) => {}
-                Entry::Vacant(v) => {
-                    v.insert(SessionState {
-                        addr: msg.addr.clone(),
-                        session_hash,
-                        username: String::new(),
-                        anonymous: true,
-                    });
-                    debug!("User with id {:x} joined the chat.", id);
-                    return id;
-                }
-            }
-        }
-    }
 }
 
 impl Handler<Disconnect> for ChatServer {
