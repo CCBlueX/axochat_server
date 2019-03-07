@@ -3,8 +3,12 @@ use log::*;
 
 use actix_web::{client::ClientRequest, http::StatusCode, HttpMessage};
 use futures::Future;
-use serde::{de::IgnoredAny, Deserialize};
+use serde::{de::IgnoredAny, Deserialize, Serialize};
 use url::Url;
+
+use crate::config::AuthConfig;
+use jsonwebtoken::{Header, Validation};
+use std::fs;
 
 pub fn authenticate(
     username: &str,
@@ -68,4 +72,37 @@ pub fn encode_sha1_bytes(bytes: &[u8; 20]) -> String {
     }
 
     buf
+}
+
+pub struct Authenticator {
+    validation: Validation,
+    header: Header,
+    key: Vec<u8>,
+}
+
+impl Authenticator {
+    pub fn new(cfg: &AuthConfig) -> Result<Authenticator> {
+        Ok(Authenticator {
+            validation: Validation::new(cfg.algorithm),
+            header: Header::new(cfg.algorithm),
+            key: fs::read(&cfg.key_file)?,
+        })
+    }
+
+    pub fn auth(&self, token: &str) -> Result<UserInfo> {
+        match jsonwebtoken::decode(token, &self.key, &self.validation) {
+            Ok(data) => Ok(data.claims),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    pub fn new_token(&self, info: UserInfo) -> Result<String> {
+        jsonwebtoken::encode(&self.header, &info, &self.key).map_err(|err| err.into())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserInfo {
+    username: String,
+    anonymous: bool,
 }

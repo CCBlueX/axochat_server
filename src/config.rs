@@ -1,4 +1,5 @@
 use crate::error::*;
+use jsonwebtoken::Algorithm;
 use serde::{Deserialize, Serialize};
 use std::{
     env,
@@ -16,6 +17,8 @@ pub struct Config {
 
     #[serde(default)]
     pub message: MsgConfig,
+
+    pub auth: Option<AuthConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -60,6 +63,15 @@ impl Default for MsgConfig {
             count_duration: Duration::from_secs(60),
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AuthConfig {
+    /// The file containing the key of the JWT
+    pub key_file: PathBuf,
+
+    /// The JWT algorithm
+    pub algorithm: Algorithm,
 }
 
 /// Reads the configuration file at `$CONFIG_PATH` or creates one if none was found.

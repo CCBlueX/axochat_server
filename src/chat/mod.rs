@@ -2,17 +2,17 @@ mod connect;
 mod handler;
 mod session;
 
-use crate::error::*;
 use crate::config::Config;
+use crate::error::*;
 
 use actix::*;
 use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 
+use crate::message::RateLimiter;
 use hashbrown::HashMap;
 use rand::{rngs::OsRng, SeedableRng};
 use rand_hc::Hc128Rng;
-use crate::message::RateLimiter;
 
 pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpResponse> {
     ws::start(req, session::Session::new(0))

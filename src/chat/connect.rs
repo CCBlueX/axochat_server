@@ -3,8 +3,8 @@ use log::*;
 use super::{ChatServer, ClientPacket, SessionState};
 use actix::*;
 
-use rand::{Rng, RngCore};
 use crate::message::RateLimiter;
+use rand::{Rng, RngCore};
 
 #[derive(Message)]
 #[rtype(usize)]

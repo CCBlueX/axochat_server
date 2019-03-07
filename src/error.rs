@@ -10,6 +10,7 @@ pub enum Error {
     TOML(toml::de::Error),
     Actix(actix_web::Error),
     OpenSSL(openssl::error::ErrorStack),
+    JWT(jsonwebtoken::errors::Error),
     AxoChat(ClientError),
 }
 
@@ -20,6 +21,7 @@ impl error::Error for Error {
             Error::JSON(err) => Some(err),
             Error::TOML(err) => Some(err),
             Error::OpenSSL(err) => Some(err),
+            Error::JWT(err) => Some(err),
             Error::AxoChat(err) => Some(err),
             _ => None,
         }
@@ -34,6 +36,7 @@ impl fmt::Display for Error {
             Error::TOML(err) => write!(f, "TOML: {}", err),
             Error::Actix(err) => write!(f, "actix-web: {}", err),
             Error::OpenSSL(err) => write!(f, "OpenSSL: {}", err),
+            Error::JWT(err) => write!(f, "JWT: {}", err),
             Error::AxoChat(err) => write!(f, "axochat: {}", err),
         }
     }
@@ -66,6 +69,12 @@ impl From<actix_web::Error> for Error {
 impl From<openssl::error::ErrorStack> for Error {
     fn from(err: openssl::error::ErrorStack) -> Error {
         Error::OpenSSL(err)
+    }
+}
+
+impl From<jsonwebtoken::errors::Error> for Error {
+    fn from(err: jsonwebtoken::errors::Error) -> Error {
+        Error::JWT(err)
     }
 }
 
