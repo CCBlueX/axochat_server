@@ -1,4 +1,4 @@
-use super::{ServerPacket, ServerPacketId, ClientPacket, ChatServer};
+use super::{ChatServer, ClientPacket, ServerPacket, ServerPacketId};
 
 use crate::error::*;
 use log::*;

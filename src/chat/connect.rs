@@ -1,7 +1,7 @@
 use log::*;
 
+use super::{ChatServer, ClientPacket, SessionState};
 use actix::*;
-use super::{ClientPacket, ChatServer, SessionState};
 
 use rand::{Rng, RngCore};
 

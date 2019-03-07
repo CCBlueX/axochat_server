@@ -1,4 +1,6 @@
-use super::{ServerState, Disconnect, connect::Connect, ServerPacket, ServerPacketId, ClientPacket};
+use super::{
+    connect::Connect, ClientPacket, Disconnect, ServerPacket, ServerPacketId, ServerState,
+};
 
 use log::*;
 

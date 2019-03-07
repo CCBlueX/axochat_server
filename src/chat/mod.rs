@@ -1,6 +1,6 @@
 mod connect;
-mod session;
 mod handler;
+mod session;
 
 use crate::error::*;
 
@@ -108,4 +108,3 @@ impl Handler<Disconnect> for ChatServer {
         self.connections.remove(&msg.id);
     }
 }
-
