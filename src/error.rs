@@ -1,4 +1,5 @@
 use std::{error, fmt, io};
+use serde::Serialize;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -9,7 +10,7 @@ pub enum Error {
     TOML(toml::de::Error),
     Actix(actix_web::Error),
     OpenSSL(openssl::error::ErrorStack),
-    LoginFailed,
+    AxoChat(ClientError),
 }
 
 impl error::Error for Error {
@@ -19,6 +20,7 @@ impl error::Error for Error {
             Error::JSON(err) => Some(err),
             Error::TOML(err) => Some(err),
             Error::OpenSSL(err) => Some(err),
+            Error::AxoChat(err) => Some(err),
             _ => None,
         }
     }
@@ -32,7 +34,7 @@ impl fmt::Display for Error {
             Error::TOML(err) => write!(f, "TOML: {}", err),
             Error::Actix(err) => write!(f, "actix-web: {}", err),
             Error::OpenSSL(err) => write!(f, "OpenSSL: {}", err),
-            Error::LoginFailed => write!(f, "login failed"),
+            Error::AxoChat(err) => write!(f, "axochat: {}", err),
         }
     }
 }
@@ -64,5 +66,27 @@ impl From<actix_web::Error> for Error {
 impl From<openssl::error::ErrorStack> for Error {
     fn from(err: openssl::error::ErrorStack) -> Error {
         Error::OpenSSL(err)
+    }
+}
+
+impl From<ClientError> for Error {
+    fn from(err: ClientError) -> Error {
+        Error::AxoChat(err)
+    }
+}
+
+/// A client-facing error.
+#[derive(Debug, Clone, Serialize)]
+pub enum ClientError {
+    LoginFailed,
+}
+
+impl error::Error for ClientError {}
+
+impl fmt::Display for ClientError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ClientError::LoginFailed => write!(f, "login failed"),
+        }
     }
 }

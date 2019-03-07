@@ -25,7 +25,7 @@ pub fn authenticate(
                 Ok(response)
             } else {
                 debug!("Login status-code is {}", response.status());
-                Err(Error::LoginFailed)
+                Err(ClientError::LoginFailed.into())
             }
         })
         .and_then(|response| response.json().map_err(|err| Error::Actix(err.into()))))

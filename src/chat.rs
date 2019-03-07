@@ -163,6 +163,7 @@ enum ClientPacket {
         author_name: Option<String>,
         content: String,
     },
+    Error(ClientError),
 }
 
 /// A serverbound packet
@@ -251,6 +252,19 @@ impl Handler<ServerPacketId> for ChatServer {
                 anonymous,
                 username,
             } => {
+                fn send_login_failed(
+                    user_id: usize,
+                    err: Error,
+                    session: &Recipient<ClientPacket>,
+                    ctx: &mut Context<ChatServer>,
+                ) {
+                    warn!("Could not authenticate user `{:x}`: {}", user_id, err);
+                    session
+                        .do_send(ClientPacket::Error(ClientError::LoginFailed))
+                        .ok();
+                    ctx.stop();
+                }
+
                 let session = self
                     .connections
                     .get(&user_id)
@@ -260,35 +274,28 @@ impl Handler<ServerPacketId> for ChatServer {
                     return;
                 }
 
-                match authenticate(&username, &session.session_hash) {
-                    Ok(fut) => {
-                        fut.into_actor(self)
-                            .then(move |res, _actor, ctx| {
-                                match res {
-                                    Ok(info) => {
-                                        info!(
-                                            "User with id `{:x}` has uuid `{}` and username `{}`",
-                                            user_id, info.id, info.name
-                                        );
+                {
+                    match authenticate(&username, &session.session_hash) {
+                        Ok(fut) => {
+                            fut.into_actor(self)
+                                .then(move |res, actor, ctx| {
+                                    match res {
+                                        Ok(info) => {
+                                            info!(
+                                                "User with id `{:x}` has uuid `{}` and username `{}`",
+                                                user_id, info.id, info.name
+                                            );
+                                        }
+                                        Err(err) => {
+                                            let session = actor.connections.get(&user_id).unwrap();
+                                            send_login_failed(user_id, err, &session.addr, ctx)
+                                        },
                                     }
-                                    Err(err) => {
-                                        warn!(
-                                            "Could not authenticate user `{:x}`: {}",
-                                            user_id, err
-                                        );
-                                        ctx.stop();
-                                    }
-                                }
-                                fut::ok(())
-                            })
-                            .wait(ctx);
-                    }
-                    Err(err) => {
-                        warn!(
-                            "Could not authenticate user `{}` with id `{:x}`: {}",
-                            username, user_id, err
-                        );
-                        ctx.stop();
+                                    fut::ok(())
+                                })
+                                .wait(ctx);
+                        }
+                        Err(err) => send_login_failed(user_id, err, &session.addr, ctx),
                     }
                 }
 
