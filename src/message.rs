@@ -22,7 +22,8 @@ impl Ratelimiter {
     pub fn check_new_message(&mut self) -> bool {
         let now = Instant::now();
         let limit = now - self.cfg.count_duration;
-        let last_index = self.buf
+        let last_index = self
+            .buf
             .iter()
             .take_while(|time| *time < &limit)
             .enumerate()

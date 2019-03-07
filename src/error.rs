@@ -1,5 +1,5 @@
-use std::{error, fmt, io};
 use serde::Serialize;
+use std::{error, fmt, io};
 
 pub type Result<T> = std::result::Result<T, Error>;
 

@@ -274,29 +274,27 @@ impl Handler<ServerPacketId> for ChatServer {
                     return;
                 }
 
-                {
-                    match authenticate(&username, &session.session_hash) {
-                        Ok(fut) => {
-                            fut.into_actor(self)
-                                .then(move |res, actor, ctx| {
-                                    match res {
-                                        Ok(info) => {
-                                            info!(
-                                                "User with id `{:x}` has uuid `{}` and username `{}`",
-                                                user_id, info.id, info.name
-                                            );
-                                        }
-                                        Err(err) => {
-                                            let session = actor.connections.get(&user_id).unwrap();
-                                            send_login_failed(user_id, err, &session.addr, ctx)
-                                        },
+                match authenticate(&username, &session.session_hash) {
+                    Ok(fut) => {
+                        fut.into_actor(self)
+                            .then(move |res, actor, ctx| {
+                                match res {
+                                    Ok(info) => {
+                                        info!(
+                                            "User with id `{:x}` has uuid `{}` and username `{}`",
+                                            user_id, info.id, info.name
+                                        );
                                     }
-                                    fut::ok(())
-                                })
-                                .wait(ctx);
-                        }
-                        Err(err) => send_login_failed(user_id, err, &session.addr, ctx),
+                                    Err(err) => {
+                                        let session = actor.connections.get(&user_id).unwrap();
+                                        send_login_failed(user_id, err, &session.addr, ctx)
+                                    }
+                                }
+                                fut::ok(())
+                            })
+                            .wait(ctx);
                     }
+                    Err(err) => send_login_failed(user_id, err, &session.addr, ctx),
                 }
 
                 if let Some(session) = self.connections.get_mut(&user_id) {
