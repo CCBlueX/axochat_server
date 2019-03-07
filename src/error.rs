@@ -91,6 +91,7 @@ pub enum ClientError {
     NotLoggedIn,
     AlreadyLoggedIn,
     RateLimited,
+    PrivateMessageNotAccepted,
 }
 
 impl error::Error for ClientError {}
@@ -102,6 +103,7 @@ impl fmt::Display for ClientError {
             ClientError::NotLoggedIn => write!(f, "not logged in"),
             ClientError::AlreadyLoggedIn => write!(f, "already logged in"),
             ClientError::RateLimited => write!(f, "rate limited"),
+            ClientError::PrivateMessageNotAccepted => write!(f, "private message not accepted"),
         }
     }
 }

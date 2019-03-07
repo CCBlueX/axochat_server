@@ -139,16 +139,26 @@ impl Handler<ServerPacketId> for ChatServer {
                     }
                 };
 
-                if !receiver_session.is_logged_in() {
-                    let client_packet = ClientPacket::PrivateMessage {
-                        author_id: user_id,
-                        author_name: sender_session.username_opt(),
-                        content,
-                    };
-                    if let Err(err) = receiver_session.addr.do_send(client_packet) {
-                        warn!("Could not send private message to client: {}", err);
+                match &receiver_session.info {
+                    Some(info) if info.allow_messages => {
+                        let client_packet = ClientPacket::PrivateMessage {
+                            author_id: user_id,
+                            author_name: sender_session.username_opt(),
+                            content,
+                        };
+                        if let Err(err) = receiver_session.addr.do_send(client_packet) {
+                            warn!("Could not send private message to client: {}", err);
+                        } else {
+                            return;
+                        }
                     }
+                    _ => {}
                 }
+
+                sender_session
+                    .addr
+                    .do_send(ClientPacket::Error(ClientError::PrivateMessageNotAccepted))
+                    .ok();
             }
         }
     }
