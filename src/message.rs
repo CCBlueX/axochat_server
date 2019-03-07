@@ -22,11 +22,20 @@ impl Ratelimiter {
     pub fn check_new_message(&mut self) -> bool {
         let now = Instant::now();
         let limit = now - self.cfg.count_duration;
-        self.buf
-            .drain(..)
-            .take_while(|time| time < &limit)
-            .for_each(|_| {});
+        let last_index = self.buf
+            .iter()
+            .take_while(|time| *time < &limit)
+            .enumerate()
+            .map(|(i, _)| i)
+            .last()
+            .unwrap_or(0);
+        self.buf.drain(..last_index);
 
-        false
+        if self.buf.len() < self.cfg.max_messages {
+            self.buf.push_back(now);
+            false
+        } else {
+            true
+        }
     }
 }
