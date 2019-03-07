@@ -133,6 +133,20 @@ struct SessionState {
     anonymous: bool,
 }
 
+impl SessionState {
+    pub fn is_logged_in(&self) -> bool {
+        !self.username.is_empty()
+    }
+
+    pub fn username_opt(&self) -> Option<String> {
+        if self.anonymous {
+            None
+        } else {
+            Some(self.username.clone())
+        }
+    }
+}
+
 #[derive(Message)]
 #[rtype(usize)]
 struct Connect {
@@ -266,7 +280,7 @@ impl Handler<ServerPacketId> for ChatServer {
                     .connections
                     .get(&user_id)
                     .expect("could not find connection");
-                if !session.username.is_empty() {
+                if !session.is_logged_in() {
                     info!("{:x} tried to log in multiple times.", user_id);
                     return;
                 }
@@ -310,20 +324,13 @@ impl Handler<ServerPacketId> for ChatServer {
                     return;
                 }
 
-                let author_name = if session.anonymous {
-                    None
-                } else {
-                    Some(session.username.clone())
-                };
-
                 let client_packet = ClientPacket::Message {
                     author_id: user_id,
-                    author_name,
+                    author_name: session.username_opt(),
                     content,
                 };
                 for session in self.connections.values() {
-                    // check if user is actually logged in
-                    if !session.username.is_empty() {
+                    if !session.is_logged_in() {
                         if let Err(err) = session.addr.do_send(client_packet.clone()) {
                             warn!("Could not send message to client: {}", err);
                         }
@@ -343,7 +350,7 @@ impl Handler<ServerPacketId> for ChatServer {
                     .connections
                     .get(&user_id)
                     .expect("could not find connection");
-                if sender_session.username.is_empty() {
+                if !sender_session.is_logged_in() {
                     info!(
                         "{:x} tried to send private message, but is not logged in.",
                         user_id
@@ -361,17 +368,10 @@ impl Handler<ServerPacketId> for ChatServer {
                     }
                 };
 
-                let author_name = if sender_session.anonymous {
-                    None
-                } else {
-                    Some(sender_session.username.clone())
-                };
-
-                // check if user is actually logged in
-                if !receiver_session.username.is_empty() {
+                if !receiver_session.is_logged_in() {
                     let client_packet = ClientPacket::PrivateMessage {
                         author_id: user_id,
-                        author_name,
+                        author_name: sender_session.username_opt(),
                         content,
                     };
                     if let Err(err) = receiver_session.addr.do_send(client_packet) {
