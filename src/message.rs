@@ -52,6 +52,10 @@ impl MessageValidator {
     }
 
     pub fn validate(&self, msg: &str) -> Result<()> {
+        if msg.is_empty() {
+            return Err(Error::AxoChat(ClientError::EmptyMessage));
+        }
+
         for (char_index, ch) in msg.chars().enumerate() {
             if char_index >= self.cfg.max_length {
                 return Err(Error::AxoChat(ClientError::MessageTooLong));
