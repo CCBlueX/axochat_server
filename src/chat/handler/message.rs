@@ -63,7 +63,7 @@ impl ChatServer {
         debug!("{:x} has written `{}` to `{}`.", user_id, content, receiver);
         let sender_session = self
             .connections
-            .get(&user_id)
+            .get_mut(&user_id)
             .expect("could not find connection");
         if !sender_session.is_logged_in() {
             info!("{:x} is not logged in.", user_id);
@@ -84,6 +84,19 @@ impl ChatServer {
 
             return;
         }
+        if sender_session.rate_limiter.check_new_message() {
+            info!("{:x} tried to send message, but was rate limited.", user_id);
+            sender_session
+                .addr
+                .do_send(ClientPacket::Error(ClientError::RateLimited))
+                .ok();
+            return;
+        }
+
+        let sender_session = self
+            .connections
+            .get(&user_id)
+            .expect("could not find connection");
         let receiver_session = match self.get_connection(&receiver) {
             Some(ses) => ses,
             None => {
