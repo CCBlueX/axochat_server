@@ -94,6 +94,9 @@ pub enum ClientError {
     MojangRequestMissing,
     RateLimited,
     PrivateMessageNotAccepted,
+    EmptyMessage,
+    MessageTooLong,
+    InvalidCharacter(char),
     Internal,
 }
 
@@ -109,6 +112,9 @@ impl fmt::Display for ClientError {
             ClientError::MojangRequestMissing => write!(f, "mojang request missing"),
             ClientError::RateLimited => write!(f, "rate limited"),
             ClientError::PrivateMessageNotAccepted => write!(f, "private message not accepted"),
+            ClientError::EmptyMessage => write!(f, "empty message"),
+            ClientError::MessageTooLong => write!(f, "message was too long"),
+            ClientError::InvalidCharacter(ch) => write!(f, "message contained invalid character: `{}`", ch.escape_default()),
             ClientError::Internal => write!(f, "internal error"),
         }
     }

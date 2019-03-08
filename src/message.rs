@@ -1,3 +1,5 @@
+use crate::error::*;
+
 use crate::config::MsgConfig;
 use std::{collections::VecDeque, time::Instant};
 
@@ -37,5 +39,28 @@ impl RateLimiter {
         } else {
             true
         }
+    }
+}
+
+pub struct MessageValidator {
+    cfg: MsgConfig,
+}
+
+impl MessageValidator {
+    pub fn new(cfg: MsgConfig) -> MessageValidator {
+        MessageValidator { cfg }
+    }
+
+    pub fn validate(&self, msg: &str) -> Result<()> {
+        for (char_index, ch) in msg.chars().enumerate() {
+            if char_index >= self.cfg.max_length {
+                return Err(Error::AxoChat(ClientError::MessageTooLong));
+            }
+            if ch != ' ' && !ch.is_ascii_graphic() && !ch.is_alphanumeric() {
+                return Err(Error::AxoChat(ClientError::InvalidCharacter(ch)));
+            }
+        }
+
+        Ok(())
     }
 }

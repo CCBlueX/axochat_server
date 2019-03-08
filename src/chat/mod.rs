@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::auth::{Authenticator, UserInfo};
-use crate::message::RateLimiter;
+use crate::message::{RateLimiter, MessageValidator};
 use hashbrown::HashMap;
 use rand::{rngs::OsRng, SeedableRng};
 use rand_hc::Hc128Rng;
@@ -31,8 +31,9 @@ pub struct ChatServer {
     connections: HashMap<Id, SessionState>,
     users: HashMap<String, Id>,
     rng: rand_hc::Hc128Rng,
-    config: Config,
     authenticator: Option<Authenticator>,
+    validator: MessageValidator,
+    config: Config,
 }
 
 impl ChatServer {
@@ -48,6 +49,7 @@ impl ChatServer {
                 .auth
                 .as_ref()
                 .map(|auth| Authenticator::new(&auth).expect("could not initialize authenticator")),
+            validator: MessageValidator::new(config.message.clone()),
             config,
         }
     }

@@ -18,6 +18,18 @@ impl ChatServer {
                 .ok();
             return;
         }
+        if let Err(err) = self.validator.validate(&content) {
+            info!("`#{:x}` tried to send invalid message: {}", user_id, err);
+            if let Error::AxoChat(err) = err {
+                session
+                    .addr
+                    .do_send(ClientPacket::Error(err))
+                    .ok();
+            }
+
+            return;
+        }
+
         if session.rate_limiter.check_new_message() {
             info!("{:x} tried to send message, but was rate limited.", user_id);
             session
@@ -59,6 +71,17 @@ impl ChatServer {
                 .addr
                 .do_send(ClientPacket::Error(ClientError::NotLoggedIn))
                 .ok();
+            return;
+        }
+        if let Err(err) = self.validator.validate(&content) {
+            info!("`#{:x}` tried to send invalid message: {}", user_id, err);
+            if let Error::AxoChat(err) = err {
+                sender_session
+                    .addr
+                    .do_send(ClientPacket::Error(err))
+                    .ok();
+            }
+
             return;
         }
         let receiver_session = match self.get_connection(&receiver) {

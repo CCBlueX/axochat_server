@@ -45,7 +45,7 @@ impl Default for NetConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MsgConfig {
-    /// The maximum message length in bytes.
+    /// The maximum message length in chars.
     pub max_length: usize,
 
     /// The maximum amount of messages in `count_duration`.
