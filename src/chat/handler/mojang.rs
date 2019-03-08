@@ -25,10 +25,7 @@ impl ChatServer {
             .addr
             .do_send(ClientPacket::MojangInfo { session_hash })
         {
-            warn!(
-                "Could not send mojang info to user `#{:x}`: {}",
-                user_id, err
-            );
+            warn!("Could not send mojang info to user `{}`: {}", user_id, err);
         }
     }
 
@@ -39,7 +36,7 @@ impl ChatServer {
             session: &Recipient<ClientPacket>,
             ctx: &mut Context<ChatServer>,
         ) {
-            warn!("Could not authenticate user `{:x}`: {}", user_id, err);
+            warn!("Could not authenticate user `{}`: {}", user_id, err);
             session
                 .do_send(ClientPacket::Error(ClientError::LoginFailed))
                 .ok();
@@ -52,14 +49,17 @@ impl ChatServer {
             .expect("could not find connection");
 
         if session.is_logged_in() {
-            info!("{:x} tried to log in multiple times.", user_id);
+            info!("User `{}` tried to log in multiple times.", user_id);
             session
                 .addr
                 .do_send(ClientPacket::Error(ClientError::AlreadyLoggedIn))
                 .ok();
             return;
         } else if self.users.contains_key(&info.username) {
-            info!("{:x} is already logged in as `{}`.", user_id, info.username);
+            info!(
+                "User `{}` is already logged in as `{}`.",
+                user_id, info.username
+            );
             session
                 .addr
                 .do_send(ClientPacket::Error(ClientError::AlreadyLoggedIn))
@@ -75,7 +75,7 @@ impl ChatServer {
                             match res {
                                 Ok(info) => {
                                     info!(
-                                        "User with id `{:x}` has uuid `{}` and username `{}`",
+                                        "User `{}` has uuid `{}` and username `{}`",
                                         user_id, info.id, info.name
                                     );
                                 }
@@ -92,7 +92,7 @@ impl ChatServer {
             }
         } else {
             info!(
-                "{:x} did not request mojang info, but tried to log in.",
+                "User `{}` did not request mojang info, but tried to log in.",
                 user_id
             );
             session
@@ -107,7 +107,7 @@ impl ChatServer {
             session.info = Some(info);
 
             if let Err(err) = session.addr.do_send(ClientPacket::LoginSuccess) {
-                info!("Could not send login success to `#{:x}`: {}", user_id, err);
+                info!("Could not send login success to `{}`: {}", user_id, err);
             }
         }
     }

@@ -114,7 +114,11 @@ impl fmt::Display for ClientError {
             ClientError::PrivateMessageNotAccepted => write!(f, "private message not accepted"),
             ClientError::EmptyMessage => write!(f, "empty message"),
             ClientError::MessageTooLong => write!(f, "message was too long"),
-            ClientError::InvalidCharacter(ch) => write!(f, "message contained invalid character: `{}`", ch.escape_default()),
+            ClientError::InvalidCharacter(ch) => write!(
+                f,
+                "message contained invalid character: `{}`",
+                ch.escape_default()
+            ),
             ClientError::Internal => write!(f, "internal error"),
         }
     }

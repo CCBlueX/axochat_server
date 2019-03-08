@@ -25,7 +25,7 @@ impl Handler<Connect> for ChatServer {
         use hashbrown::hash_map::Entry;
 
         loop {
-            let id = self.rng.gen();
+            let id = Id(self.rng.gen());
             match self.connections.entry(id) {
                 Entry::Occupied(_) => {}
                 Entry::Vacant(v) => {
@@ -35,7 +35,7 @@ impl Handler<Connect> for ChatServer {
                         info: None,
                         rate_limiter: RateLimiter::new(self.config.message.clone()),
                     });
-                    debug!("User with id {:x} joined the chat.", id);
+                    debug!("User `{}` joined the chat.", id);
                     return id;
                 }
             }

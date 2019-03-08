@@ -5,13 +5,13 @@ use log::*;
 
 impl ChatServer {
     pub(super) fn handle_message(&mut self, user_id: Id, content: String) {
-        info!("{:x} has written `{}`.", user_id, content);
+        info!("User `{}` has written `{}`.", user_id, content);
         let session = self
             .connections
             .get_mut(&user_id)
             .expect("could not find connection");
         if !session.is_logged_in() {
-            info!("{:x} is not logged in.", user_id);
+            info!("`{}` is not logged in.", user_id);
             session
                 .addr
                 .do_send(ClientPacket::Error(ClientError::NotLoggedIn))
@@ -19,19 +19,19 @@ impl ChatServer {
             return;
         }
         if let Err(err) = self.validator.validate(&content) {
-            info!("`#{:x}` tried to send invalid message: {}", user_id, err);
+            info!("User `{}` tried to send invalid message: {}", user_id, err);
             if let Error::AxoChat(err) = err {
-                session
-                    .addr
-                    .do_send(ClientPacket::Error(err))
-                    .ok();
+                session.addr.do_send(ClientPacket::Error(err)).ok();
             }
 
             return;
         }
 
         if session.rate_limiter.check_new_message() {
-            info!("{:x} tried to send message, but was rate limited.", user_id);
+            info!(
+                "User `{}` tried to send message, but was rate limited.",
+                user_id
+            );
             session
                 .addr
                 .do_send(ClientPacket::Error(ClientError::RateLimited))
@@ -59,14 +59,13 @@ impl ChatServer {
         receiver: AtUser,
         content: String,
     ) {
-        info!("{:x} has written to `{}`.", user_id, receiver);
-        debug!("{:x} has written `{}` to `{}`.", user_id, content, receiver);
+        info!("User `{}` has written to `{}`.", user_id, receiver);
         let sender_session = self
             .connections
             .get_mut(&user_id)
             .expect("could not find connection");
         if !sender_session.is_logged_in() {
-            info!("{:x} is not logged in.", user_id);
+            info!("User `{}` is not logged in.", user_id);
             sender_session
                 .addr
                 .do_send(ClientPacket::Error(ClientError::NotLoggedIn))
@@ -74,18 +73,18 @@ impl ChatServer {
             return;
         }
         if let Err(err) = self.validator.validate(&content) {
-            info!("`#{:x}` tried to send invalid message: {}", user_id, err);
+            info!("User `{}` tried to send invalid message: {}", user_id, err);
             if let Error::AxoChat(err) = err {
-                sender_session
-                    .addr
-                    .do_send(ClientPacket::Error(err))
-                    .ok();
+                sender_session.addr.do_send(ClientPacket::Error(err)).ok();
             }
 
             return;
         }
         if sender_session.rate_limiter.check_new_message() {
-            info!("{:x} tried to send message, but was rate limited.", user_id);
+            info!(
+                "User `{}` tried to send message, but was rate limited.",
+                user_id
+            );
             sender_session
                 .addr
                 .do_send(ClientPacket::Error(ClientError::RateLimited))
@@ -101,7 +100,7 @@ impl ChatServer {
             Some(ses) => ses,
             None => {
                 debug!(
-                    "{:x} tried to write to non-existing user `{}`.",
+                    "User `{}` tried to write to non-existing user `{}`.",
                     user_id, receiver
                 );
                 return;
