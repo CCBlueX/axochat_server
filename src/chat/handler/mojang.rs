@@ -6,6 +6,7 @@ use log::*;
 use crate::auth::{authenticate, UserInfo};
 use actix::*;
 use rand::RngCore;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 impl ChatServer {
     pub(super) fn handle_request_mojang_info(&mut self, user_id: Id) {
@@ -69,8 +70,10 @@ impl ChatServer {
         }
 
         if let Some(session_hash) = &session.session_hash {
+            let logged_in = Arc::new(AtomicBool::new(false));
             match authenticate(&info.username, session_hash) {
                 Ok(fut) => {
+                    let logged_in = Arc::clone(&logged_in);
                     fut.into_actor(self)
                         .then(move |res, actor, ctx| {
                             match res {
@@ -79,6 +82,7 @@ impl ChatServer {
                                         "User `{}` has uuid `{}` and username `{}`",
                                         user_id, info.id, info.name
                                     );
+                                    logged_in.store(true, Ordering::Relaxed);
                                 }
                                 Err(err) => {
                                     let session = actor.connections.get(&user_id).unwrap();
@@ -91,6 +95,17 @@ impl ChatServer {
                 }
                 Err(err) => send_login_failed(user_id, err, &session.addr, ctx),
             }
+
+            if logged_in.load(Ordering::Relaxed) {
+                if let Some(session) = self.connections.get_mut(&user_id) {
+                    self.users.insert(info.username.clone(), user_id);
+                    session.info = Some(info);
+
+                    if let Err(err) = session.addr.do_send(ClientPacket::LoginSuccess) {
+                        info!("Could not send login success to `{}`: {}", user_id, err);
+                    }
+                }
+            }
         } else {
             info!(
                 "User `{}` did not request mojang info, but tried to log in.",
@@ -100,16 +115,6 @@ impl ChatServer {
                 .addr
                 .do_send(ClientPacket::Error(ClientError::MojangRequestMissing))
                 .ok();
-            return;
-        }
-
-        if let Some(session) = self.connections.get_mut(&user_id) {
-            self.users.insert(info.username.clone(), user_id);
-            session.info = Some(info);
-
-            if let Err(err) = session.addr.do_send(ClientPacket::LoginSuccess) {
-                info!("Could not send login success to `{}`: {}", user_id, err);
-            }
         }
     }
 }
