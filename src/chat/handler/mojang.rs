@@ -6,7 +6,10 @@ use log::*;
 use crate::auth::{authenticate, UserInfo};
 use actix::*;
 use rand::RngCore;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 impl ChatServer {
     pub(super) fn handle_request_mojang_info(&mut self, user_id: Id) {
