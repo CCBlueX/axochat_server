@@ -11,7 +11,7 @@ impl ChatServer {
     pub(super) fn handle_request_mojang_info(&mut self, user_id: Id) {
         let session = self
             .connections
-            .get(&user_id)
+            .get_mut(&user_id)
             .expect("could not find connection");
 
         let mut bytes = [0; 20];
@@ -20,6 +20,7 @@ impl ChatServer {
         bytes[0] &= 0b0111_1111;
 
         let session_hash = crate::auth::encode_sha1_bytes(&bytes);
+        session.session_hash = Some(session_hash.clone());
 
         if let Err(err) = session
             .addr
