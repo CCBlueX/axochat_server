@@ -109,6 +109,7 @@ struct Disconnect {
 
 /// A clientbound packet
 #[derive(Message, Serialize, Clone)]
+#[serde(tag = "m", content = "c")]
 enum ClientPacket {
     MojangInfo {
         session_hash: String,
@@ -130,6 +131,7 @@ enum ClientPacket {
 
 /// A serverbound packet
 #[derive(Message, Deserialize)]
+#[serde(tag = "m", content = "c")]
 enum ServerPacket {
     RequestMojangInfo,
     LoginMojang(UserInfo),
