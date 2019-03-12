@@ -18,6 +18,9 @@ pub struct Config {
     #[serde(default)]
     pub message: MsgConfig,
 
+    #[serde(default)]
+    pub moderation: ModConfig,
+
     pub auth: Option<AuthConfig>,
 }
 
@@ -72,6 +75,24 @@ pub struct AuthConfig {
 
     /// The JWT algorithm
     pub algorithm: Algorithm,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModConfig {
+    /// The file containing the moderators (line separated).
+    pub moderators: PathBuf,
+
+    /// The file containing the banned users (line separated).
+    pub banned: PathBuf,
+}
+
+impl Default for ModConfig {
+    fn default() -> ModConfig {
+        ModConfig {
+            moderators: PathBuf::from("./moderators.txt"),
+            banned: PathBuf::from("./banned.txt"),
+        }
+    }
 }
 
 /// Reads the configuration file at `$CONFIG_PATH` or creates one if none was found.

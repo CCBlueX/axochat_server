@@ -3,6 +3,7 @@ mod chat;
 mod config;
 mod error;
 mod message;
+mod moderation;
 
 use error::*;
 use log::*;

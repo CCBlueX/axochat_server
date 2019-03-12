@@ -15,6 +15,7 @@ use std::fmt;
 
 use crate::auth::{Authenticator, UserInfo};
 use crate::message::{MessageValidator, RateLimiter};
+use crate::moderation::Moderation;
 use hashbrown::HashMap;
 use rand::{rngs::OsRng, SeedableRng};
 use rand_hc::Hc128Rng;
@@ -34,6 +35,7 @@ pub struct ChatServer {
     rng: rand_hc::Hc128Rng,
     authenticator: Option<Authenticator>,
     validator: MessageValidator,
+    moderation: Moderation,
     config: Config,
 }
 
@@ -51,6 +53,7 @@ impl ChatServer {
                 .as_ref()
                 .map(|auth| Authenticator::new(&auth).expect("could not initialize authenticator")),
             validator: MessageValidator::new(config.message.clone()),
+            moderation: Moderation::new(config.moderation.clone()).expect("could not start moderation"),
             config,
         }
     }
