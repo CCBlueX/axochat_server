@@ -93,11 +93,13 @@ pub enum ClientError {
     AlreadyLoggedIn,
     MojangRequestMissing,
     NotPermitted,
+    NotBanned,
     RateLimited,
     PrivateMessageNotAccepted,
     EmptyMessage,
     MessageTooLong,
     InvalidCharacter(char),
+    InvalidUser,
     Internal,
 }
 
@@ -112,6 +114,7 @@ impl fmt::Display for ClientError {
             ClientError::AlreadyLoggedIn => write!(f, "already logged in"),
             ClientError::MojangRequestMissing => write!(f, "mojang request missing"),
             ClientError::NotPermitted => write!(f, "not permitted"),
+            ClientError::NotBanned => write!(f, "not banned"),
             ClientError::RateLimited => write!(f, "rate limited"),
             ClientError::PrivateMessageNotAccepted => write!(f, "private message not accepted"),
             ClientError::EmptyMessage => write!(f, "empty message"),
@@ -121,6 +124,7 @@ impl fmt::Display for ClientError {
                 "message contained invalid character: `{}`",
                 ch.escape_default()
             ),
+            ClientError::InvalidUser => write!(f, "invalid user"),
             ClientError::Internal => write!(f, "internal error"),
         }
     }

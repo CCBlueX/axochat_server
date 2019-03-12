@@ -49,9 +49,11 @@ impl Moderation {
     pub fn unban(&mut self, user: &str) -> Result<()> {
         if self.banned.remove(user) {
             write_lines(&self.config.banned, self.banned.iter())?;
-        }
 
-        Ok(())
+            Ok(())
+        } else {
+            Err(Error::AxoChat(ClientError::NotBanned))
+        }
     }
 }
 

@@ -52,7 +52,7 @@ impl ChatServer {
                 Ok(info) => {
                     self.users.insert(info.username.clone(), user_id);
                     session.info = Some(info);
-                    if let Err(err) = session.addr.do_send(ClientPacket::LoginSuccess) {
+                    if let Err(err) = session.addr.do_send(ClientPacket::Success) {
                         info!("Could not send login success to `{}`: {}", user_id, err);
                     }
                 }

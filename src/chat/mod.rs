@@ -86,7 +86,7 @@ impl Handler<Disconnect> for ChatServer {
     }
 }
 
-struct SessionState {
+pub(self) struct SessionState {
     addr: Recipient<ClientPacket>,
     session_hash: Option<String>,
     rate_limiter: RateLimiter,
@@ -119,7 +119,6 @@ enum ClientPacket {
         session_hash: String,
     },
     NewJWT(String),
-    LoginSuccess,
     Message {
         author_id: Id,
         author_name: Option<String>,
@@ -130,6 +129,7 @@ enum ClientPacket {
         author_name: Option<String>,
         content: String,
     },
+    Success,
     Error(ClientError),
 }
 
@@ -143,6 +143,8 @@ enum ServerPacket {
     RequestJWT,
     Message { content: String },
     PrivateMessage { receiver: AtUser, content: String },
+    BanUser(AtUser),
+    UnbanUser(AtUser),
 }
 
 #[derive(Message)]
