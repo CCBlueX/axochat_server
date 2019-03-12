@@ -53,7 +53,8 @@ impl ChatServer {
                 .as_ref()
                 .map(|auth| Authenticator::new(&auth).expect("could not initialize authenticator")),
             validator: MessageValidator::new(config.message.clone()),
-            moderation: Moderation::new(config.moderation.clone()).expect("could not start moderation"),
+            moderation: Moderation::new(config.moderation.clone())
+                .expect("could not start moderation"),
             config,
         }
     }

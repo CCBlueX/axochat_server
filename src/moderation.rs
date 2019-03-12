@@ -1,7 +1,11 @@
-use crate::error::*;
 use crate::config::ModConfig;
+use crate::error::*;
 use hashbrown::HashSet;
-use std::{fs::{File, OpenOptions}, io::{BufReader, BufRead, BufWriter, Write}, path::Path};
+use std::{
+    fs::{File, OpenOptions},
+    io::{BufRead, BufReader, BufWriter, Write},
+    path::Path,
+};
 
 pub struct Moderation {
     config: ModConfig,
@@ -13,7 +17,11 @@ impl Moderation {
     pub fn new(config: ModConfig) -> Result<Moderation> {
         let moderators = read_lines(&config.moderators)?;
         let banned = read_lines(&config.banned)?;
-        Ok(Moderation { config, moderators, banned })
+        Ok(Moderation {
+            config,
+            moderators,
+            banned,
+        })
     }
 
     pub fn is_moderator(&self, user: &str) -> bool {
@@ -48,7 +56,15 @@ impl Moderation {
 }
 
 fn read_lines(path: &Path) -> Result<HashSet<String>> {
-    let reader = BufReader::new(File::open(&path)?);
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(ref err) if err.kind() == std::io::ErrorKind::NotFound => {
+            File::create(path)?;
+            return Ok(HashSet::new());
+        }
+        Err(err) => return Err(err.into()),
+    };
+    let reader = BufReader::new(file);
     let mut lines = HashSet::new();
     for line in reader.lines() {
         let line = line?;
