@@ -25,7 +25,7 @@ impl Moderation {
     }
 
     pub fn is_moderator(&self, user: &str) -> bool {
-        self.moderators.contains(user)
+        self.moderators.contains(&user.to_lowercase())
     }
 
     /// Ban user if user is not a moderator.
@@ -33,7 +33,7 @@ impl Moderation {
         if self.is_moderator(user) {
             Err(Error::AxoChat(ClientError::NotPermitted))
         } else {
-            if self.banned.insert(user.to_owned()) {
+            if self.banned.insert(user.to_lowercase()) {
                 let mut file = OpenOptions::new()
                     .append(true)
                     .create(true)
@@ -54,6 +54,10 @@ impl Moderation {
         } else {
             Err(Error::AxoChat(ClientError::NotBanned))
         }
+    }
+
+    pub fn is_banned(&self, user: &str) -> bool {
+        self.banned.contains(&user.to_lowercase())
     }
 }
 
