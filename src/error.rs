@@ -100,7 +100,7 @@ pub enum ClientError {
     EmptyMessage,
     MessageTooLong,
     InvalidCharacter(char),
-    InvalidUser,
+    InvalidId,
     Internal,
 }
 
@@ -126,7 +126,7 @@ impl fmt::Display for ClientError {
                 "message contained invalid character: `{}`",
                 ch.escape_default()
             ),
-            ClientError::InvalidUser => write!(f, "invalid user"),
+            ClientError::InvalidId => write!(f, "invalid id"),
             ClientError::Internal => write!(f, "internal error"),
         }
     }

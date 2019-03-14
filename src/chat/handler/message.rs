@@ -1,11 +1,11 @@
-use super::{AtUser, ChatServer, ClientPacket, Id};
-use crate::chat::SessionState;
+use super::{ChatServer, ClientPacket, Id};
+use crate::chat::{InternalId, SessionState};
 
 use crate::error::*;
 use log::*;
 
 impl ChatServer {
-    pub(super) fn handle_message(&mut self, user_id: Id, content: String) {
+    pub(super) fn handle_message(&mut self, user_id: InternalId, content: String) {
         if self.basic_check(user_id, &content).is_some() {
             let session = self
                 .connections
@@ -16,9 +16,11 @@ impl ChatServer {
                 return;
             }
 
+            let author_id = session.info.as_ref().unwrap().username.as_str().into();
+
             info!("User `{}` has written `{}`.", user_id, content);
             let client_packet = ClientPacket::Message {
-                author_id: user_id,
+                author_id,
                 author_name: session.username_opt(),
                 content,
             };
@@ -34,8 +36,8 @@ impl ChatServer {
 
     pub(super) fn handle_private_message(
         &mut self,
-        user_id: Id,
-        receiver: AtUser,
+        user_id: InternalId,
+        receiver: Id,
         content: String,
     ) {
         let sender_session = self
@@ -48,7 +50,7 @@ impl ChatServer {
         }
 
         if let Some(sender_session) = self.basic_check(user_id, &content) {
-            let receiver_session = match self.get_connection(&receiver) {
+            let receiver_session = match self.connection_by_id(&receiver) {
                 Some(ses) => ses,
                 None => {
                     debug!(
@@ -61,8 +63,16 @@ impl ChatServer {
 
             match &receiver_session.info {
                 Some(info) if info.allow_messages => {
+                    let author_id = sender_session
+                        .info
+                        .as_ref()
+                        .unwrap()
+                        .username
+                        .as_str()
+                        .into();
+
                     let client_packet = ClientPacket::PrivateMessage {
-                        author_id: user_id,
+                        author_id,
                         author_name: sender_session.username_opt(),
                         content,
                     };
@@ -86,7 +96,7 @@ impl ChatServer {
         }
     }
 
-    fn basic_check(&self, user_id: Id, content: &str) -> Option<&SessionState> {
+    fn basic_check(&self, user_id: InternalId, content: &str) -> Option<&SessionState> {
         let session = self
             .connections
             .get(&user_id)
@@ -101,7 +111,7 @@ impl ChatServer {
 
                 return None;
             }
-            if self.moderation.is_banned(&info.username) {
+            if self.moderation.is_banned(&info.username.as_str().into()) {
                 info!("User `{}` tried to send message while banned", user_id);
                 session
                     .addr
@@ -123,7 +133,7 @@ impl ChatServer {
     }
 }
 
-fn check_ratelimit(user_id: Id, session: &mut SessionState) -> bool {
+fn check_ratelimit(user_id: InternalId, session: &mut SessionState) -> bool {
     if session.rate_limiter.check_new_message() {
         info!(
             "User `{}` tried to send message, but was rate limited.",

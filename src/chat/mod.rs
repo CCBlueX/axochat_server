@@ -1,17 +1,16 @@
 mod connect;
 mod handler;
+mod id;
 mod session;
+
+pub use id::*;
 
 use crate::config::Config;
 use crate::error::*;
 
-use actix::{
-    dev::{MessageResponse, ResponseChannel},
-    *,
-};
+use actix::*;
 use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 use crate::auth::{Authenticator, UserInfo};
 use crate::message::{MessageValidator, RateLimiter};
@@ -21,7 +20,7 @@ use rand::{rngs::OsRng, SeedableRng};
 use rand_hc::Hc128Rng;
 
 pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpResponse> {
-    ws::start(req, session::Session::new(Id(0)))
+    ws::start(req, session::Session::new(InternalId::new(0)))
 }
 
 #[derive(Clone)]
@@ -30,20 +29,24 @@ pub struct ServerState {
 }
 
 pub struct ChatServer {
-    connections: HashMap<Id, SessionState>,
-    users: HashMap<String, Id>,
+    connections: HashMap<InternalId, SessionState>,
+    ids: HashMap<Id, InternalId>,
+
     rng: rand_hc::Hc128Rng,
     authenticator: Option<Authenticator>,
     validator: MessageValidator,
     moderation: Moderation,
     config: Config,
+
+    current_internal_user_id: u64,
 }
 
 impl ChatServer {
     pub fn new(config: Config) -> ChatServer {
         ChatServer {
             connections: HashMap::new(),
-            users: HashMap::new(),
+            ids: HashMap::new(),
+
             rng: {
                 let os_rng = OsRng::new().expect("could not initialize os rng");
                 Hc128Rng::from_rng(os_rng).expect("could not initialize hc128 rng")
@@ -56,17 +59,14 @@ impl ChatServer {
             moderation: Moderation::new(config.moderation.clone())
                 .expect("could not start moderation"),
             config,
+
+            current_internal_user_id: 0,
         }
     }
 
-    fn get_connection(&self, user: &AtUser) -> Option<&SessionState> {
-        match user {
-            AtUser::Id(id) => self.connections.get(&id),
-            AtUser::Name(name) => {
-                let id = self.users.get(name)?;
-                self.connections.get(&id)
-            }
-        }
+    pub(self) fn connection_by_id(&self, id: &Id) -> Option<&SessionState> {
+        let internal_id = self.ids.get(id)?;
+        self.connections.get(&internal_id)
     }
 }
 
@@ -80,7 +80,7 @@ impl Handler<Disconnect> for ChatServer {
     fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) {
         if let Some(session) = self.connections.remove(&msg.id) {
             if let Some(info) = session.info {
-                self.users.remove(&info.username);
+                self.ids.remove(&info.username.as_str().into());
             }
         }
     }
@@ -108,7 +108,7 @@ impl SessionState {
 
 #[derive(Message)]
 struct Disconnect {
-    id: Id,
+    id: InternalId,
 }
 
 /// A clientbound packet
@@ -142,50 +142,13 @@ enum ServerPacket {
     LoginJWT(String),
     RequestJWT,
     Message { content: String },
-    PrivateMessage { receiver: AtUser, content: String },
-    BanUser(AtUser),
-    UnbanUser(AtUser),
+    PrivateMessage { receiver: Id, content: String },
+    BanUser(Id),
+    UnbanUser(Id),
 }
 
 #[derive(Message)]
 struct ServerPacketId {
-    user_id: Id,
+    user_id: InternalId,
     packet: ServerPacket,
-}
-
-#[derive(Deserialize)]
-enum AtUser {
-    Id(Id),
-    Name(String),
-}
-
-impl fmt::Display for AtUser {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            AtUser::Id(id) => id.fmt(f),
-            AtUser::Name(name) => write!(f, "{}", name),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Hash)]
-#[repr(transparent)]
-pub struct Id(u32);
-
-impl fmt::Display for Id {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "#{:x}", self.0)
-    }
-}
-
-impl<A, M> MessageResponse<A, M> for Id
-where
-    A: Actor,
-    M: Message<Result = Id>,
-{
-    fn handle<R: ResponseChannel<M>>(self, _: &mut A::Context, tx: Option<R>) {
-        if let Some(tx) = tx {
-            tx.send(self);
-        }
-    }
 }

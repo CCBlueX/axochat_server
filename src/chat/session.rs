@@ -1,5 +1,6 @@
 use super::{
-    connect::Connect, ClientPacket, Disconnect, Id, ServerPacket, ServerPacketId, ServerState,
+    connect::Connect, ClientPacket, Disconnect, InternalId, ServerPacket, ServerPacketId,
+    ServerState,
 };
 
 use log::*;
@@ -8,11 +9,11 @@ use actix::*;
 use actix_web::ws;
 
 pub struct Session {
-    id: Id,
+    id: InternalId,
 }
 
 impl Session {
-    pub fn new(id: Id) -> Session {
+    pub fn new(id: InternalId) -> Session {
         Session { id }
     }
 }

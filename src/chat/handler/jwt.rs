@@ -1,10 +1,11 @@
-use super::{ChatServer, ClientPacket, Id};
+use super::{ChatServer, ClientPacket};
+use crate::chat::InternalId;
 
 use crate::error::*;
 use log::*;
 
 impl ChatServer {
-    pub(super) fn handle_request_jwt(&mut self, user_id: Id) {
+    pub(super) fn handle_request_jwt(&mut self, user_id: InternalId) {
         let session = self
             .connections
             .get(&user_id)
@@ -42,7 +43,7 @@ impl ChatServer {
         }
     }
 
-    pub(super) fn handle_login_jwt(&mut self, user_id: Id, jwt: &str) {
+    pub(super) fn handle_login_jwt(&mut self, user_id: InternalId, jwt: &str) {
         let session = self
             .connections
             .get_mut(&user_id)
@@ -50,7 +51,7 @@ impl ChatServer {
         if let Some(auth) = &self.authenticator {
             match auth.auth(jwt) {
                 Ok(info) => {
-                    self.users.insert(info.username.clone(), user_id);
+                    self.ids.insert(info.username.as_str().into(), user_id);
                     session.info = Some(info);
                     if let Err(err) = session.addr.do_send(ClientPacket::Success) {
                         info!("Could not send login success to `{}`: {}", user_id, err);

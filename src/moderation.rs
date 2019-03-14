@@ -1,3 +1,4 @@
+use crate::chat::Id;
 use crate::config::ModConfig;
 use crate::error::*;
 use hashbrown::HashSet;
@@ -9,14 +10,14 @@ use std::{
 
 pub struct Moderation {
     config: ModConfig,
-    moderators: HashSet<String>,
-    banned: HashSet<String>,
+    moderators: HashSet<Id>,
+    banned: HashSet<Id>,
 }
 
 impl Moderation {
     pub fn new(config: ModConfig) -> Result<Moderation> {
-        let moderators = read_lines(&config.moderators)?;
-        let banned = read_lines(&config.banned)?;
+        let moderators = read_ids(&config.moderators)?;
+        let banned = read_ids(&config.banned)?;
         Ok(Moderation {
             config,
             moderators,
@@ -24,16 +25,16 @@ impl Moderation {
         })
     }
 
-    pub fn is_moderator(&self, user: &str) -> bool {
-        self.moderators.contains(&user.to_ascii_lowercase())
+    pub fn is_moderator(&self, user: &Id) -> bool {
+        self.moderators.contains(user)
     }
 
     /// Ban user if user is not a moderator.
-    pub fn ban(&mut self, user: &str) -> Result<()> {
+    pub fn ban(&mut self, user: &Id) -> Result<()> {
         if self.is_moderator(user) {
             Err(Error::AxoChat(ClientError::NotPermitted))
         } else {
-            if self.banned.insert(user.to_ascii_lowercase()) {
+            if self.banned.insert(user.clone()) {
                 let mut file = OpenOptions::new()
                     .append(true)
                     .create(true)
@@ -46,9 +47,13 @@ impl Moderation {
         }
     }
 
-    pub fn unban(&mut self, user: &str) -> Result<()> {
+    pub fn unban(&mut self, user: &Id) -> Result<()> {
         if self.banned.remove(user) {
-            write_lines(&self.config.banned, self.banned.iter())?;
+            let mut writer = BufWriter::new(File::create(&self.config.banned)?);
+
+            for banned in &self.banned {
+                writeln!(writer, "{}", banned)?;
+            }
 
             Ok(())
         } else {
@@ -56,12 +61,12 @@ impl Moderation {
         }
     }
 
-    pub fn is_banned(&self, user: &str) -> bool {
-        self.banned.contains(&user.to_ascii_lowercase())
+    pub fn is_banned(&self, user: &Id) -> bool {
+        self.banned.contains(user)
     }
 }
 
-fn read_lines(path: &Path) -> Result<HashSet<String>> {
+fn read_ids(path: &Path) -> Result<HashSet<Id>> {
     let file = match File::open(path) {
         Ok(file) => file,
         Err(ref err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -75,18 +80,8 @@ fn read_lines(path: &Path) -> Result<HashSet<String>> {
     for line in reader.lines() {
         let line = line?;
         if !line.is_empty() {
-            lines.insert(line);
+            lines.insert(line.parse()?);
         }
     }
     Ok(lines)
-}
-
-fn write_lines<'a>(path: &Path, lines: impl Iterator<Item = &'a String>) -> Result<()> {
-    let mut writer = BufWriter::new(File::create(&path)?);
-
-    for line in lines {
-        writeln!(writer, "{}", line)?;
-    }
-
-    Ok(())
 }

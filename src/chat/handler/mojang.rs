@@ -1,4 +1,5 @@
-use crate::chat::{ChatServer, ClientPacket, Id};
+use crate::chat::InternalId;
+use crate::chat::{ChatServer, ClientPacket};
 
 use crate::error::*;
 use log::*;
@@ -12,7 +13,7 @@ use std::sync::{
 };
 
 impl ChatServer {
-    pub(super) fn handle_request_mojang_info(&mut self, user_id: Id) {
+    pub(super) fn handle_request_mojang_info(&mut self, user_id: InternalId) {
         let session = self
             .connections
             .get_mut(&user_id)
@@ -34,9 +35,14 @@ impl ChatServer {
         }
     }
 
-    pub(super) fn login_mojang(&mut self, user_id: Id, info: UserInfo, ctx: &mut Context<Self>) {
+    pub(super) fn login_mojang(
+        &mut self,
+        user_id: InternalId,
+        info: UserInfo,
+        ctx: &mut Context<Self>,
+    ) {
         fn send_login_failed(
-            user_id: Id,
+            user_id: InternalId,
             err: Error,
             session: &Recipient<ClientPacket>,
             ctx: &mut Context<ChatServer>,
@@ -60,7 +66,7 @@ impl ChatServer {
                 .do_send(ClientPacket::Error(ClientError::AlreadyLoggedIn))
                 .ok();
             return;
-        } else if self.users.contains_key(&info.username) {
+        } else if self.ids.contains_key(&info.username.as_str().into()) {
             info!(
                 "User `{}` is already logged in as `{}`.",
                 user_id, info.username
@@ -101,7 +107,7 @@ impl ChatServer {
 
             if logged_in.load(Ordering::Relaxed) {
                 if let Some(session) = self.connections.get_mut(&user_id) {
-                    self.users.insert(info.username.clone(), user_id);
+                    self.ids.insert(info.username.as_str().into(), user_id);
                     session.info = Some(info);
 
                     if let Err(err) = session.addr.do_send(ClientPacket::Success) {
