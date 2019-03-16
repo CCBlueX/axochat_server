@@ -21,8 +21,8 @@ impl Handler<Connect> for ChatServer {
     type Result = InternalId;
 
     fn handle(&mut self, msg: Connect, _ctx: &mut Context<Self>) -> InternalId {
-        let id = InternalId::new(self.current_internal_user_id + 1);
         self.current_internal_user_id += 1;
+        let id = InternalId::new(self.current_internal_user_id);
         self.connections.insert(
             id,
             SessionState {
