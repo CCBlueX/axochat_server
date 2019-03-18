@@ -12,7 +12,7 @@ impl ChatServer {
             .expect("could not find connection");
         if let Some(auth) = &self.authenticator {
             if let Some(info) = &session.info {
-                let token = match auth.new_token(info) {
+                let token = match auth.new_token(info.clone()) {
                     Ok(token) => token,
                     Err(err) => {
                         warn!("Could not create new token for user `{}`: {}", user_id, err);

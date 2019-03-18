@@ -8,7 +8,10 @@ use url::Url;
 
 use crate::config::AuthConfig;
 use jsonwebtoken::{Header, Validation};
-use std::fs;
+use std::{
+    fs,
+    time::{Duration, SystemTime},
+};
 
 pub fn authenticate(
     username: &str,
@@ -78,6 +81,7 @@ pub struct Authenticator {
     validation: Validation,
     header: Header,
     key: Vec<u8>,
+    valid_time: Duration,
 }
 
 impl Authenticator {
@@ -86,6 +90,7 @@ impl Authenticator {
             validation: Validation::new(cfg.algorithm),
             header: Header::new(cfg.algorithm),
             key: fs::read(&cfg.key_file)?,
+            valid_time: cfg.valid_time,
         })
     }
 
@@ -96,12 +101,25 @@ impl Authenticator {
         }
     }
 
-    pub fn new_token(&self, info: &UserInfo) -> Result<String> {
-        jsonwebtoken::encode(&self.header, info, &self.key).map_err(|err| err.into())
+    pub fn new_token(&self, info: UserInfo) -> Result<String> {
+        let unix_time = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("system time is somehow before the unix epoch");
+        let claims = Claims {
+            exp: (unix_time + self.valid_time).as_secs(),
+            user: info,
+        };
+        jsonwebtoken::encode(&self.header, &claims, &self.key).map_err(|err| err.into())
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    exp: u64,
+    user: UserInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
     pub username: String,
     pub anonymous: bool,

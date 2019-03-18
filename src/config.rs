@@ -75,6 +75,9 @@ pub struct AuthConfig {
 
     /// The JWT algorithm
     pub algorithm: Algorithm,
+
+    /// The time for which a JWT is valid
+    pub valid_time: Duration,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
