@@ -1,6 +1,6 @@
 [package]
 name = "axochat"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["frozolotl <frozolotl@protonmail.com>"]
 edition = "2018"
 
@@ -11,7 +11,7 @@ env_logger = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 hashbrown = "0.1"
-toml = "0.4"
+toml = "0.5"
 rand = "0.6"
 rand_hc = "0.1"
 
