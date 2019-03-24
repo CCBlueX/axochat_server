@@ -12,7 +12,7 @@ use actix::*;
 use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::Authenticator;
+use crate::auth::{Authenticator, UserInfo};
 use crate::message::{MessageValidator, RateLimiter};
 use crate::moderation::Moderation;
 use hashbrown::HashMap;
@@ -98,13 +98,6 @@ impl SessionState {
     pub fn is_logged_in(&self) -> bool {
         self.user.is_some()
     }
-
-    pub fn username_opt(&self) -> Option<String> {
-        match &self.user {
-            Some(user) if !user.anonymous => Some(user.name.clone()),
-            _ => None,
-        }
-    }
 }
 
 #[derive(Message)]
@@ -122,12 +115,12 @@ enum ClientPacket {
     NewJWT(String),
     Message {
         author_id: Id,
-        author_name: Option<String>,
+        author_info: Option<UserInfo>,
         content: String,
     },
     PrivateMessage {
         author_id: Id,
-        author_name: Option<String>,
+        author_info: Option<UserInfo>,
         content: String,
     },
     Success,

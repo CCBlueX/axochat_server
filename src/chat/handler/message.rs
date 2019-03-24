@@ -1,5 +1,6 @@
 use super::{ChatServer, ClientPacket, Id};
 use crate::chat::{InternalId, SessionState};
+use crate::auth::UserInfo;
 
 use crate::error::*;
 use log::*;
@@ -16,12 +17,16 @@ impl ChatServer {
                 return;
             }
 
-            let author_id = session.user.as_ref().unwrap().name.as_str().into();
+            let info = session.user.as_ref().unwrap();
+            let author_id = info.name.as_str().into();
 
             info!("User `{}` has written `{}`.", user_id, content);
             let client_packet = ClientPacket::Message {
                 author_id,
-                author_name: session.username_opt(),
+                author_info: Some(UserInfo {
+                    name: info.name.clone(),
+                    uuid: info.uuid,
+                }),
                 content,
             };
             for session in self.connections.values() {
@@ -63,17 +68,21 @@ impl ChatServer {
 
             match &receiver_session.user {
                 Some(info) if info.allow_messages => {
-                    let author_id = sender_session
+                    let sender_info = sender_session
                         .user
                         .as_ref()
-                        .unwrap()
+                        .unwrap();
+                    let author_id = sender_info
                         .name
                         .as_str()
                         .into();
 
                     let client_packet = ClientPacket::PrivateMessage {
                         author_id,
-                        author_name: sender_session.username_opt(),
+                        author_info: Some(UserInfo {
+                            name: sender_info.name.clone(),
+                            uuid: sender_info.uuid,
+                        }),
                         content,
                     };
                     info!(
