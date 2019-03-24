@@ -96,8 +96,8 @@ impl Authenticator {
     }
 
     pub fn auth(&self, token: &str) -> Result<UserInfo> {
-        match jsonwebtoken::decode(token, &self.key, &self.validation) {
-            Ok(data) => Ok(data.claims),
+        match jsonwebtoken::decode::<Claims>(token, &self.key, &self.validation) {
+            Ok(data) => Ok(data.claims.user),
             Err(err) => Err(err.into()),
         }
     }

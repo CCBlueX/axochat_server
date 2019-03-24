@@ -1,6 +1,6 @@
 [package]
 name = "axochat"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["frozolotl <frozolotl@protonmail.com>"]
 edition = "2018"
 
