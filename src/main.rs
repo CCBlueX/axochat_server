@@ -26,13 +26,9 @@ enum Opt {
     #[structopt(name = "generate")]
     Generate {
         #[structopt(name = "name")]
-        username: String,
+        name: String,
         #[structopt(name = "uuid")]
         uuid: Option<Uuid>,
-        #[structopt(name = "messages")]
-        allow_messages: bool,
-        #[structopt(name = "anonymous")]
-        anonymous: bool,
     }
 }
 
@@ -45,7 +41,7 @@ fn main() -> Result<()> {
     let opt = Opt::from_args();
     match opt {
         Opt::Start => start_server(config),
-        Opt::Generate { username, uuid, allow_messages, anonymous } => {
+        Opt::Generate { name, uuid } => {
             let auth = match config.auth {
                 Some(auth) => auth::Authenticator::new(&auth),
                 None => {
@@ -54,10 +50,8 @@ fn main() -> Result<()> {
                 }
             }?;
             let token = auth.new_token(auth::UserInfo {
-                username,
+                name,
                 uuid: uuid.unwrap_or_else(|| Uuid::from_u128(0)),
-                allow_messages,
-                anonymous,
             })?;
             println!("{}", token);
             Ok(())

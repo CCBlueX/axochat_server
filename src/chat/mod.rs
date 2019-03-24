@@ -12,12 +12,13 @@ use actix::*;
 use actix_web::{ws, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::{Authenticator, UserInfo};
+use crate::auth::Authenticator;
 use crate::message::{MessageValidator, RateLimiter};
 use crate::moderation::Moderation;
 use hashbrown::HashMap;
 use rand::{rngs::OsRng, SeedableRng};
 use rand_hc::Hc128Rng;
+use uuid::Uuid;
 
 pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpResponse> {
     ws::start(req, session::Session::new(InternalId::new(0)))
@@ -79,8 +80,8 @@ impl Handler<Disconnect> for ChatServer {
 
     fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) {
         if let Some(session) = self.connections.remove(&msg.id) {
-            if let Some(info) = session.info {
-                self.ids.remove(&info.username.as_str().into());
+            if let Some(info) = session.user {
+                self.ids.remove(&info.name.as_str().into());
             }
         }
     }
@@ -90,17 +91,17 @@ pub(self) struct SessionState {
     addr: Recipient<ClientPacket>,
     session_hash: Option<String>,
     rate_limiter: RateLimiter,
-    info: Option<UserInfo>,
+    user: Option<User>,
 }
 
 impl SessionState {
     pub fn is_logged_in(&self) -> bool {
-        self.info.is_some()
+        self.user.is_some()
     }
 
     pub fn username_opt(&self) -> Option<String> {
-        match self.info {
-            Some(ref info) if !info.anonymous => Some(info.username.clone()),
+        match &self.user {
+            Some(user) if !user.anonymous => Some(user.name.clone()),
             _ => None,
         }
     }
@@ -138,8 +139,12 @@ enum ClientPacket {
 #[serde(tag = "m", content = "c")]
 enum ServerPacket {
     RequestMojangInfo,
-    LoginMojang(UserInfo),
-    LoginJWT(String),
+    LoginMojang(User),
+    LoginJWT {
+        token: String,
+        anonymous: bool,
+        allow_messages: bool,
+    },
     RequestJWT,
     Message { content: String },
     PrivateMessage { receiver: Id, content: String },
@@ -151,4 +156,13 @@ enum ServerPacket {
 struct ServerPacketId {
     user_id: InternalId,
     packet: ServerPacket,
+}
+
+#[derive(Serialize, Deserialize)]
+struct User {
+    pub name: String,
+    pub uuid: Uuid,
+    pub anonymous: bool,
+    /// Should this user allow private messages?
+    pub allow_messages: bool,
 }

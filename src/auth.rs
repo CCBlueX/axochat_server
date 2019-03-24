@@ -122,9 +122,6 @@ pub struct Claims {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
-    pub username: String,
+    pub name: String,
     pub uuid: Uuid,
-    pub anonymous: bool,
-    /// Should this user allow private messages?
-    pub allow_messages: bool,
 }

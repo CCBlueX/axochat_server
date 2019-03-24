@@ -28,7 +28,7 @@ impl Handler<Connect> for ChatServer {
             SessionState {
                 addr: msg.addr.clone(),
                 session_hash: None,
-                info: None,
+                user: None,
                 rate_limiter: RateLimiter::new(self.config.message.clone()),
             },
         );

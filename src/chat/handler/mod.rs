@@ -25,8 +25,8 @@ impl Handler<ServerPacketId> for ChatServer {
             ServerPacket::RequestJWT => {
                 self.handle_request_jwt(user_id);
             }
-            ServerPacket::LoginJWT(jwt) => {
-                self.handle_login_jwt(user_id, &jwt);
+            ServerPacket::LoginJWT { token, anonymous, allow_messages } => {
+                self.handle_login_jwt(user_id, &token, anonymous, allow_messages);
             }
             ServerPacket::Message { content } => self.handle_message(user_id, content),
             ServerPacket::PrivateMessage { receiver, content } => {

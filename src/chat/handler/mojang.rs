@@ -1,10 +1,9 @@
-use crate::chat::InternalId;
-use crate::chat::{ChatServer, ClientPacket};
+use crate::chat::{ChatServer, ClientPacket, InternalId, User};
 
 use crate::error::*;
 use log::*;
 
-use crate::auth::{authenticate, UserInfo};
+use crate::auth::authenticate;
 use actix::*;
 use rand::RngCore;
 use std::sync::{
@@ -38,7 +37,7 @@ impl ChatServer {
     pub(super) fn login_mojang(
         &mut self,
         user_id: InternalId,
-        info: UserInfo,
+        info: User,
         ctx: &mut Context<Self>,
     ) {
         fn send_login_failed(
@@ -66,10 +65,10 @@ impl ChatServer {
                 .do_send(ClientPacket::Error(ClientError::AlreadyLoggedIn))
                 .ok();
             return;
-        } else if self.ids.contains_key(&info.username.as_str().into()) {
+        } else if self.ids.contains_key(&info.name.as_str().into()) {
             info!(
                 "User `{}` is already logged in as `{}`.",
-                user_id, info.username
+                user_id, info.name
             );
             session
                 .addr
@@ -80,7 +79,7 @@ impl ChatServer {
 
         if let Some(session_hash) = &session.session_hash {
             let logged_in = Arc::new(AtomicBool::new(false));
-            match authenticate(&info.username, session_hash) {
+            match authenticate(&info.name, session_hash) {
                 Ok(fut) => {
                     let logged_in = Arc::clone(&logged_in);
                     fut.into_actor(self)
@@ -107,8 +106,8 @@ impl ChatServer {
 
             if logged_in.load(Ordering::Relaxed) {
                 if let Some(session) = self.connections.get_mut(&user_id) {
-                    self.ids.insert(info.username.as_str().into(), user_id);
-                    session.info = Some(info);
+                    self.ids.insert(info.name.as_str().into(), user_id);
+                    session.user = Some(info);
 
                     if let Err(err) = session.addr.do_send(ClientPacket::Success) {
                         info!("Could not send login success to `{}`: {}", user_id, err);

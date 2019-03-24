@@ -16,7 +16,7 @@ impl ChatServer {
                 return;
             }
 
-            let author_id = session.info.as_ref().unwrap().username.as_str().into();
+            let author_id = session.user.as_ref().unwrap().name.as_str().into();
 
             info!("User `{}` has written `{}`.", user_id, content);
             let client_packet = ClientPacket::Message {
@@ -61,13 +61,13 @@ impl ChatServer {
                 }
             };
 
-            match &receiver_session.info {
+            match &receiver_session.user {
                 Some(info) if info.allow_messages => {
                     let author_id = sender_session
-                        .info
+                        .user
                         .as_ref()
                         .unwrap()
-                        .username
+                        .name
                         .as_str()
                         .into();
 
@@ -102,7 +102,7 @@ impl ChatServer {
             .get(&user_id)
             .expect("could not find connection");
 
-        if let Some(info) = &session.info {
+        if let Some(info) = &session.user {
             if let Err(err) = self.validator.validate(content) {
                 info!("User `{}` tried to send invalid message: {}", user_id, err);
                 if let Error::AxoChat(err) = err {
@@ -111,7 +111,7 @@ impl ChatServer {
 
                 return None;
             }
-            if self.moderation.is_banned(&info.username.as_str().into()) {
+            if self.moderation.is_banned(&info.name.as_str().into()) {
                 info!("User `{}` tried to send message while banned", user_id);
                 session
                     .addr

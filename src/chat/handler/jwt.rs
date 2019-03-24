@@ -1,5 +1,6 @@
 use super::{ChatServer, ClientPacket};
-use crate::chat::InternalId;
+use crate::chat::{InternalId, User};
+use crate::auth::UserInfo;
 
 use crate::error::*;
 use log::*;
@@ -11,8 +12,11 @@ impl ChatServer {
             .get(&user_id)
             .expect("could not find connection");
         if let Some(auth) = &self.authenticator {
-            if let Some(info) = &session.info {
-                let token = match auth.new_token(info.clone()) {
+            if let Some(user) = &session.user {
+                let token = match auth.new_token(UserInfo {
+                    name: user.name.clone(),
+                    uuid: user.uuid,
+                }) {
                     Ok(token) => token,
                     Err(err) => {
                         warn!("Could not create new token for user `{}`: {}", user_id, err);
@@ -43,7 +47,7 @@ impl ChatServer {
         }
     }
 
-    pub(super) fn handle_login_jwt(&mut self, user_id: InternalId, jwt: &str) {
+    pub(super) fn handle_login_jwt(&mut self, user_id: InternalId, jwt: &str, anonymous: bool, allow_messages: bool) {
         let session = self
             .connections
             .get_mut(&user_id)
@@ -51,8 +55,13 @@ impl ChatServer {
         if let Some(auth) = &self.authenticator {
             match auth.auth(jwt) {
                 Ok(info) => {
-                    self.ids.insert(info.username.as_str().into(), user_id);
-                    session.info = Some(info);
+                    self.ids.insert(info.name.as_str().into(), user_id);
+                    session.user = Some(User {
+                        name: info.name,
+                        uuid: info.uuid,
+                        anonymous,
+                        allow_messages,
+                    });
                     if let Err(err) = session.addr.do_send(ClientPacket::Success) {
                         info!("Could not send login success to `{}`: {}", user_id, err);
                     }
