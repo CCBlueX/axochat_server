@@ -7,16 +7,64 @@ mod moderation;
 
 use error::*;
 use log::*;
+use config::Config;
+use structopt::*;
 
 use actix::{Arbiter, System};
 use actix_web::{server::HttpServer, App};
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
+use uuid::Uuid;
+
+#[derive(StructOpt)]
+enum Opt {
+    /// Starts the axochat server.
+    #[structopt(name = "start")]
+    Start,
+    /// Generates a JWT which can be used for logging in.
+    /// This should only be used for testing.
+    /// If you want to generate JWT for non-testing purposes, send a RequestJWT packet to the server.
+    #[structopt(name = "generate")]
+    Generate {
+        #[structopt(name = "name")]
+        username: String,
+        #[structopt(name = "uuid")]
+        uuid: Option<Uuid>,
+        #[structopt(name = "messages")]
+        allow_messages: bool,
+        #[structopt(name = "anonymous")]
+        anonymous: bool,
+    }
+}
 
 fn main() -> Result<()> {
     env_logger::init();
+
     let config = config::read_config()?;
     debug!("Read configuration file: {:?}", config);
 
+    let opt = Opt::from_args();
+    match opt {
+        Opt::Start => start_server(config),
+        Opt::Generate { username, uuid, allow_messages, anonymous } => {
+            let auth = match config.auth {
+                Some(auth) => auth::Authenticator::new(&auth),
+                None => {
+                    eprintln!("Please add a `auth` segment to your configuration file.");
+                    Err(Error::AxoChat(ClientError::NotSupported))
+                }
+            }?;
+            let token = auth.new_token(auth::UserInfo {
+                username,
+                allow_messages,
+                anonymous,
+            })?;
+            println!("{}", token);
+            Ok(())
+        }
+    }
+}
+
+fn start_server(config: Config) -> Result<()> {
     let system = System::new("axochat");
     let server_config = config.clone();
     let server = Arbiter::start(|_| chat::ChatServer::new(server_config));
