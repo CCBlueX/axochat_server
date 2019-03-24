@@ -55,6 +55,7 @@ fn main() -> Result<()> {
             }?;
             let token = auth.new_token(auth::UserInfo {
                 username,
+                uuid: uuid.unwrap_or_else(|| Uuid::from_u128(0)),
                 allow_messages,
                 anonymous,
             })?;

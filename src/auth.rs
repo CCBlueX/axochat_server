@@ -8,6 +8,7 @@ use url::Url;
 
 use crate::config::AuthConfig;
 use jsonwebtoken::{Header, Validation};
+use uuid::Uuid;
 use std::{
     fs,
     time::{Duration, SystemTime},
@@ -122,6 +123,7 @@ pub struct Claims {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
     pub username: String,
+    pub uuid: Uuid,
     pub anonymous: bool,
     /// Should this user allow private messages?
     pub allow_messages: bool,
