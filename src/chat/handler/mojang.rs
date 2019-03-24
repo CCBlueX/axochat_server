@@ -6,6 +6,8 @@ use log::*;
 use crate::auth::authenticate;
 use actix::*;
 use rand::RngCore;
+use uuid::Uuid;
+use std::str::FromStr;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -79,18 +81,23 @@ impl ChatServer {
 
         if let Some(session_hash) = &session.session_hash {
             let logged_in = Arc::new(AtomicBool::new(false));
+            let uuid = info.uuid;
             match authenticate(&info.name, session_hash) {
                 Ok(fut) => {
                     let logged_in = Arc::clone(&logged_in);
                     fut.into_actor(self)
                         .then(move |res, actor, ctx| {
                             match res {
-                                Ok(info) => {
+                                Ok(ref info) if Uuid::from_str(&info.id).expect("got invalid uuid from mojang :()") == uuid => {
                                     info!(
                                         "User `{}` has uuid `{}` and username `{}`",
                                         user_id, info.id, info.name
                                     );
                                     logged_in.store(true, Ordering::Relaxed);
+                                }
+                                Ok(_) => {
+                                    let session = actor.connections.get(&user_id).unwrap();
+                                    send_login_failed(user_id, Error::AxoChat(ClientError::InvalidId), &session.addr, ctx)
                                 }
                                 Err(err) => {
                                     let session = actor.connections.get(&user_id).unwrap();
