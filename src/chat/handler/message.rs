@@ -30,7 +30,7 @@ impl ChatServer {
                 content,
             };
             for session in self.connections.values() {
-                if !session.is_logged_in() {
+                if session.is_logged_in() {
                     if let Err(err) = session.addr.do_send(client_packet.clone()) {
                         warn!("Could not send message to client: {}", err);
                     }
