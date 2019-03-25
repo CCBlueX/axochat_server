@@ -4,7 +4,7 @@ use actix::{
     dev::{MessageResponse, ResponseChannel},
     *,
 };
-use openssl::sha::Sha256;
+use openssl::sha::sha256;
 use serde::{
     de::{self, Deserializer, Visitor},
     ser::Serializer,
@@ -60,10 +60,7 @@ impl fmt::Display for Id {
 
 impl From<&str> for Id {
     fn from(s: &str) -> Id {
-        let mut sha = Sha256::new();
-        sha.update(b"--AxoChat:");
-        sha.update(s.as_bytes());
-        Id(sha.finish())
+        Id(sha256(s.as_bytes()))
     }
 }
 
