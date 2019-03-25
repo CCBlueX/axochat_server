@@ -91,7 +91,7 @@ impl Authenticator {
             validation: Validation::new(cfg.algorithm),
             header: Header::new(cfg.algorithm),
             key: fs::read(&cfg.key_file)?,
-            valid_time: cfg.valid_time,
+            valid_time: *cfg.valid_time,
         })
     }
 

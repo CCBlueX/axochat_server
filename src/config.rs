@@ -1,6 +1,10 @@
 use crate::error::*;
 use jsonwebtoken::Algorithm;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{self, Deserializer, Visitor},
+    ser::Serializer,
+    Deserialize, Serialize,
+};
 use std::{
     env,
     fs::{self, File},
@@ -8,6 +12,8 @@ use std::{
     net::SocketAddr,
     path::PathBuf,
     time::Duration,
+    ops::Deref,
+    fmt,
 };
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
@@ -55,7 +61,7 @@ pub struct MsgConfig {
     pub max_messages: usize,
 
     /// The duration in which the amount of messages cannot be greater.
-    pub count_duration: Duration,
+    pub count_duration: WDuration,
 }
 
 impl Default for MsgConfig {
@@ -63,7 +69,7 @@ impl Default for MsgConfig {
         MsgConfig {
             max_length: 100,
             max_messages: 40,
-            count_duration: Duration::from_secs(60),
+            count_duration: Duration::from_secs(60).into(),
         }
     }
 }
@@ -77,7 +83,7 @@ pub struct AuthConfig {
     pub algorithm: Algorithm,
 
     /// The time for which a JWT is valid
-    pub valid_time: Duration,
+    pub valid_time: WDuration,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -116,5 +122,61 @@ pub fn read_config() -> Result<Config> {
             Ok(cfg)
         }
         Err(err) => Err(err.into()),
+    }
+}
+
+#[derive(Eq, PartialEq, Clone, Copy, Debug)]
+pub struct WDuration(Duration);
+
+impl From<Duration> for WDuration {
+    fn from(duration: Duration) -> WDuration {
+        WDuration(duration)
+    }
+}
+
+impl Deref for WDuration {
+    type Target = Duration;
+
+    fn deref(&self) -> &Duration {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for WDuration {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<WDuration, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct IdVisitor;
+
+        impl<'de> Visitor<'de> for IdVisitor {
+            type Value = WDuration;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a duration")
+            }
+
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                match humantime::parse_duration(value) {
+                    Ok(duration) => Ok(WDuration(duration)),
+                    Err(err) => Err(E::custom(err)),
+                }
+            }
+        }
+
+        deserializer.deserialize_str(IdVisitor)
+    }
+}
+
+impl Serialize for WDuration {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let duration = humantime::format_duration(self.0);
+        serializer.serialize_str(&duration.to_string())
     }
 }
