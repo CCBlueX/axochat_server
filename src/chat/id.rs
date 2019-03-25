@@ -117,6 +117,10 @@ impl Serialize for Id {
     where
         S: Serializer,
     {
+        let mut s = String::with_capacity(64);
+        for i in &self.0 {
+            write!(&mut s, "{:02x}", i).unwrap();
+        }
         serializer.serialize_str(&format!("{}", self))
     }
 }
