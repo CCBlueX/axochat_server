@@ -139,8 +139,13 @@ enum ServerPacket {
         allow_messages: bool,
     },
     RequestJWT,
-    Message { content: String },
-    PrivateMessage { receiver: Id, content: String },
+    Message {
+        content: String,
+    },
+    PrivateMessage {
+        receiver: Id,
+        content: String,
+    },
     BanUser(Id),
     UnbanUser(Id),
 }

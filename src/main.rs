@@ -5,9 +5,9 @@ mod error;
 mod message;
 mod moderation;
 
+use config::Config;
 use error::*;
 use log::*;
-use config::Config;
 use structopt::*;
 
 use actix::{Arbiter, System};
@@ -29,7 +29,7 @@ enum Opt {
         name: String,
         #[structopt(name = "uuid")]
         uuid: Option<Uuid>,
-    }
+    },
 }
 
 fn main() -> Result<()> {

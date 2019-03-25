@@ -8,11 +8,11 @@ use url::Url;
 
 use crate::config::AuthConfig;
 use jsonwebtoken::{Header, Validation};
-use uuid::Uuid;
 use std::{
     fs,
     time::{Duration, SystemTime},
 };
+use uuid::Uuid;
 
 pub fn authenticate(
     username: &str,

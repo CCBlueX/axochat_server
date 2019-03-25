@@ -1,6 +1,6 @@
 use super::{ChatServer, ClientPacket};
-use crate::chat::{InternalId, User};
 use crate::auth::UserInfo;
+use crate::chat::{InternalId, User};
 
 use crate::error::*;
 use log::*;
@@ -47,7 +47,13 @@ impl ChatServer {
         }
     }
 
-    pub(super) fn handle_login_jwt(&mut self, user_id: InternalId, jwt: &str, anonymous: bool, allow_messages: bool) {
+    pub(super) fn handle_login_jwt(
+        &mut self,
+        user_id: InternalId,
+        jwt: &str,
+        anonymous: bool,
+        allow_messages: bool,
+    ) {
         let session = self
             .connections
             .get_mut(&user_id)

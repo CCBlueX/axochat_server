@@ -1,6 +1,6 @@
 use super::{ChatServer, ClientPacket, Id};
-use crate::chat::{InternalId, SessionState};
 use crate::auth::UserInfo;
+use crate::chat::{InternalId, SessionState};
 
 use crate::error::*;
 use log::*;
@@ -68,14 +68,8 @@ impl ChatServer {
 
             match &receiver_session.user {
                 Some(info) if info.allow_messages => {
-                    let sender_info = sender_session
-                        .user
-                        .as_ref()
-                        .unwrap();
-                    let author_id = sender_info
-                        .name
-                        .as_str()
-                        .into();
+                    let sender_info = sender_session.user.as_ref().unwrap();
+                    let author_id = sender_info.name.as_str().into();
 
                     let client_packet = ClientPacket::PrivateMessage {
                         author_id,

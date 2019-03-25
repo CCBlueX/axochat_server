@@ -6,12 +6,12 @@ use log::*;
 use crate::auth::authenticate;
 use actix::*;
 use rand::RngCore;
-use uuid::Uuid;
 use std::str::FromStr;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use uuid::Uuid;
 
 impl ChatServer {
     pub(super) fn handle_request_mojang_info(&mut self, user_id: InternalId) {
@@ -88,7 +88,11 @@ impl ChatServer {
                     fut.into_actor(self)
                         .then(move |res, actor, ctx| {
                             match res {
-                                Ok(ref info) if Uuid::from_str(&info.id).expect("got invalid uuid from mojang :()") == uuid => {
+                                Ok(ref info)
+                                    if Uuid::from_str(&info.id)
+                                        .expect("got invalid uuid from mojang :()")
+                                        == uuid =>
+                                {
                                     info!(
                                         "User `{}` has uuid `{}` and username `{}`",
                                         user_id, info.id, info.name
@@ -97,7 +101,12 @@ impl ChatServer {
                                 }
                                 Ok(_) => {
                                     let session = actor.connections.get(&user_id).unwrap();
-                                    send_login_failed(user_id, Error::AxoChat(ClientError::InvalidId), &session.addr, ctx)
+                                    send_login_failed(
+                                        user_id,
+                                        Error::AxoChat(ClientError::InvalidId),
+                                        &session.addr,
+                                        ctx,
+                                    )
                                 }
                                 Err(err) => {
                                     let session = actor.connections.get(&user_id).unwrap();
