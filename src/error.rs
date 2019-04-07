@@ -1,87 +1,26 @@
 use serde::Serialize;
 use std::{error, fmt, io};
+use derive_more::From;
+use failure::Fail;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, From, Fail)]
 pub enum Error {
+    #[fail(display = "I/O: {}", _0)]
     IO(io::Error),
+    #[fail(display = "JSON: {}", _0)]
     JSON(serde_json::error::Error),
+    #[fail(display = "TOML: {}", _0)]
     TOML(toml::de::Error),
+    #[fail(display = "actix-web: {}", _0)]
     Actix(actix_web::Error),
+    #[fail(display = "OpenSSL: {}", _0)]
     OpenSSL(openssl::error::ErrorStack),
+    #[fail(display = "JWT: {}", _0)]
     JWT(jsonwebtoken::errors::Error),
+    #[fail(display = "axochat: {}", _0)]
     AxoChat(ClientError),
-}
-
-impl error::Error for Error {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Error::IO(err) => Some(err),
-            Error::JSON(err) => Some(err),
-            Error::TOML(err) => Some(err),
-            Error::OpenSSL(err) => Some(err),
-            Error::JWT(err) => Some(err),
-            Error::AxoChat(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Error::IO(err) => write!(f, "I/O: {}", err),
-            Error::JSON(err) => write!(f, "JSON: {}", err),
-            Error::TOML(err) => write!(f, "TOML: {}", err),
-            Error::Actix(err) => write!(f, "actix-web: {}", err),
-            Error::OpenSSL(err) => write!(f, "OpenSSL: {}", err),
-            Error::JWT(err) => write!(f, "JWT: {}", err),
-            Error::AxoChat(err) => write!(f, "axochat: {}", err),
-        }
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Error {
-        Error::IO(err)
-    }
-}
-
-impl From<serde_json::error::Error> for Error {
-    fn from(err: serde_json::error::Error) -> Error {
-        Error::JSON(err)
-    }
-}
-
-impl From<toml::de::Error> for Error {
-    fn from(err: toml::de::Error) -> Error {
-        Error::TOML(err)
-    }
-}
-
-impl From<actix_web::Error> for Error {
-    fn from(err: actix_web::Error) -> Error {
-        Error::Actix(err)
-    }
-}
-
-impl From<openssl::error::ErrorStack> for Error {
-    fn from(err: openssl::error::ErrorStack) -> Error {
-        Error::OpenSSL(err)
-    }
-}
-
-impl From<jsonwebtoken::errors::Error> for Error {
-    fn from(err: jsonwebtoken::errors::Error) -> Error {
-        Error::JWT(err)
-    }
-}
-
-impl From<ClientError> for Error {
-    fn from(err: ClientError) -> Error {
-        Error::AxoChat(err)
-    }
 }
 
 /// A client-facing error.
