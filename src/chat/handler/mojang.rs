@@ -67,7 +67,7 @@ impl ChatServer {
                 .do_send(ClientPacket::Error(ClientError::AlreadyLoggedIn))
                 .ok();
             return;
-        } else if self.ids.contains_key(&info.name.as_str().into()) {
+        } else if self.ids.contains_key(&info.uuid.into()) {
             info!(
                 "User `{}` is already logged in as `{}`.",
                 user_id, info.name
@@ -122,7 +122,7 @@ impl ChatServer {
 
             if logged_in.load(Ordering::Relaxed) {
                 if let Some(session) = self.connections.get_mut(&user_id) {
-                    self.ids.insert(info.name.as_str().into(), user_id);
+                    self.ids.insert(info.uuid.into(), user_id);
                     session.user = Some(info);
 
                     if let Err(err) = session.addr.do_send(ClientPacket::Success) {

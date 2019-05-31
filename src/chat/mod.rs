@@ -81,7 +81,7 @@ impl Handler<Disconnect> for ChatServer {
     fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) {
         if let Some(session) = self.connections.remove(&msg.id) {
             if let Some(info) = session.user {
-                self.ids.remove(&info.name.as_str().into());
+                self.ids.remove(&info.uuid.into());
             }
         }
     }

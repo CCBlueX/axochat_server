@@ -12,8 +12,19 @@ use structopt::*;
 
 use actix::{Arbiter, System};
 use actix_web::{server::HttpServer, App};
-use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use uuid::Uuid;
+
+#[cfg(feature = "native")]
+use {
+    rustls::{
+        internal::pemfile::{certs, rsa_private_keys},
+        NoClientAuth, ServerConfig,
+    },
+    std::{fs::File, io::BufReader},
+};
+
+#[cfg(feature = "ssl")]
+use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 
 #[derive(StructOpt)]
 enum Opt {
@@ -72,19 +83,37 @@ fn start_server(config: Config) -> Result<()> {
     });
 
     if let (Some(cert), Some(key)) = (config.net.cert_file, config.net.key_file) {
-        let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-        builder.set_certificate_chain_file(cert)?;
-        let ft = match key.extension() {
-            Some(ext) if ext == "pem" => SslFiletype::PEM,
-            _ => SslFiletype::ASN1,
-        };
-        builder.set_private_key_file(key, ft)?;
+        #[cfg(all(feature = "ssl", feature = "native"))]
+        {
+            compile_error!("Can't enable both the `ssl` and the `native` feature.")
+        }
 
-        server.bind_ssl(config.net.address, builder)?
+        #[cfg(feature = "ssl")]
+        {
+            let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
+            builder.set_certificate_chain_file(cert)?;
+            let ft = match key.extension() {
+                Some(ext) if ext == "pem" => SslFiletype::PEM,
+                _ => SslFiletype::ASN1,
+            };
+            builder.set_private_key_file(key, ft)?;
+
+            server.bind_ssl(config.net.address, builder)?.start();
+        }
+
+        #[cfg(feature = "native")]
+        {
+            let mut config = ServerConfig::new(NoClientAuth::new());
+            let mut cert_file = BufReader::new(File::open(cert)?);
+            let cert_chain = certs(&mut cert_file).or_else(|()| Err(Error::RustTLSNoMsg))?;
+            let mut key_file = BufReader::new(File::open(key)?);
+            let mut keys = rsa_private_keys(&mut key_file)?;
+            config.set_single_cert(cert_chain, keys.remove(0))?;
+            server.bind_rustls("127.0.0.1:8443", config)?.start();
+        }
     } else {
-        server.bind(config.net.address)?
+        server.bind(config.net.address)?.start();
     }
-    .start();
 
     info!("Started server at {}", config.net.address);
     system.run();

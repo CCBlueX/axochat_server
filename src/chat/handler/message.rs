@@ -18,7 +18,7 @@ impl ChatServer {
             }
 
             let info = session.user.as_ref().unwrap();
-            let author_id = info.name.as_str().into();
+            let author_id = info.uuid.into();
 
             info!("User `{}` has written `{}`.", user_id, content);
             let client_packet = ClientPacket::Message {
@@ -69,7 +69,7 @@ impl ChatServer {
             match &receiver_session.user {
                 Some(info) if info.allow_messages => {
                     let sender_info = sender_session.user.as_ref().unwrap();
-                    let author_id = sender_info.name.as_str().into();
+                    let author_id = sender_info.uuid.into();
 
                     let client_packet = ClientPacket::PrivateMessage {
                         author_id,
@@ -114,7 +114,7 @@ impl ChatServer {
 
                 return None;
             }
-            if self.moderation.is_banned(&info.name.as_str().into()) {
+            if self.moderation.is_banned(&info.uuid.into()) {
                 info!("User `{}` tried to send message while banned", user_id);
                 session
                     .addr

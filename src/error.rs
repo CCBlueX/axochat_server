@@ -15,8 +15,15 @@ pub enum Error {
     TOML(toml::de::Error),
     #[fail(display = "actix-web: {}", _0)]
     Actix(actix_web::Error),
+    #[cfg(feature = "ssl")]
     #[fail(display = "OpenSSL: {}", _0)]
     OpenSSL(openssl::error::ErrorStack),
+    #[cfg(feature = "native")]
+    #[fail(display = "rustls: {}", _0)]
+    RustTLS(rustls::TLSError),
+    #[cfg(feature = "native")]
+    #[fail(display = "rustls")]
+    RustTLSNoMsg,
     #[fail(display = "JWT: {}", _0)]
     JWT(jsonwebtoken::errors::Error),
     #[fail(display = "axochat: {}", _0)]

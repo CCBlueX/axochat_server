@@ -19,7 +19,7 @@ impl ChatServer {
             .get(&user_id)
             .expect("could not find connection");
         if let Some(info) = &session.user {
-            if !self.moderation.is_moderator(&info.name.as_str().into()) {
+            if !self.moderation.is_moderator(&info.uuid.into()) {
                 info!("`{}` tried to (un-)ban user without permission", user_id);
                 session
                     .addr
