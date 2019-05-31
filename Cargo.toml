@@ -8,7 +8,7 @@ edition = "2018"
 default = ["ssl"]
 
 ssl = ["openssl", "actix-web/alpn"]
-native = ["rustls", "actix-web/rust-tls"]
+rust-tls = ["rustls", "actix-web/rust-tls"]
 
 [dependencies]
 log = "0.4"

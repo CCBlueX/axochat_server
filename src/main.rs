@@ -14,7 +14,7 @@ use actix::{Arbiter, System};
 use actix_web::{server::HttpServer, App};
 use uuid::Uuid;
 
-#[cfg(feature = "native")]
+#[cfg(feature = "rust-tls")]
 use {
     rustls::{
         internal::pemfile::{certs, rsa_private_keys},
@@ -83,9 +83,9 @@ fn start_server(config: Config) -> Result<()> {
     });
 
     if let (Some(cert), Some(key)) = (config.net.cert_file, config.net.key_file) {
-        #[cfg(all(feature = "ssl", feature = "native"))]
+        #[cfg(all(feature = "ssl", feature = "rust-tls"))]
         {
-            compile_error!("Can't enable both the `ssl` and the `native` feature.")
+            compile_error!("Can't enable both the `ssl` and the `rust-tls` feature.")
         }
 
         #[cfg(feature = "ssl")]
@@ -101,7 +101,7 @@ fn start_server(config: Config) -> Result<()> {
             server.bind_ssl(config.net.address, builder)?.start();
         }
 
-        #[cfg(feature = "native")]
+        #[cfg(feature = "rust-tls")]
         {
             let mut config = ServerConfig::new(NoClientAuth::new());
             let mut cert_file = BufReader::new(File::open(cert)?);

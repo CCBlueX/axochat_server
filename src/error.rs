@@ -18,10 +18,10 @@ pub enum Error {
     #[cfg(feature = "ssl")]
     #[fail(display = "OpenSSL: {}", _0)]
     OpenSSL(openssl::error::ErrorStack),
-    #[cfg(feature = "native")]
+    #[cfg(feature = "rust-tls")]
     #[fail(display = "rustls: {}", _0)]
     RustTLS(rustls::TLSError),
-    #[cfg(feature = "native")]
+    #[cfg(feature = "rust-tls")]
     #[fail(display = "rustls")]
     RustTLSNoMsg,
     #[fail(display = "JWT: {}", _0)]
