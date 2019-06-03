@@ -156,7 +156,7 @@ struct ServerPacketId {
     packet: ServerPacket,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct User {
     pub name: String,
     pub uuid: Uuid,

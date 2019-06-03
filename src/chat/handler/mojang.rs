@@ -7,10 +7,6 @@ use crate::auth::authenticate;
 use actix::*;
 use rand::RngCore;
 use std::str::FromStr;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
 use uuid::Uuid;
 
 impl ChatServer {
@@ -80,24 +76,29 @@ impl ChatServer {
         }
 
         if let Some(session_hash) = &session.session_hash {
-            let logged_in = Arc::new(AtomicBool::new(false));
-            let uuid = info.uuid;
             match authenticate(&info.name, session_hash) {
                 Ok(fut) => {
-                    let logged_in = Arc::clone(&logged_in);
                     fut.into_actor(self)
                         .then(move |res, actor, ctx| {
                             match res {
-                                Ok(ref info)
-                                    if Uuid::from_str(&info.id)
+                                Ok(ref mojang_info)
+                                    if Uuid::from_str(&mojang_info.id)
                                         .expect("got invalid uuid from mojang :()")
-                                        == uuid =>
+                                        == info.uuid =>
                                 {
                                     info!(
                                         "User `{}` has uuid `{}` and username `{}`",
-                                        user_id, info.id, info.name
+                                        user_id, mojang_info.id, mojang_info.name
                                     );
-                                    logged_in.store(true, Ordering::SeqCst);
+
+                                    if let Some(session) = actor.connections.get_mut(&user_id) {
+                                        actor.ids.insert(info.uuid.into(), user_id);
+                                        session.user = Some(info);
+
+                                        if let Err(err) = session.addr.do_send(ClientPacket::Success) {
+                                            info!("Could not send login success to `{}`: {}", user_id, err);
+                                        }
+                                    }
                                 }
                                 Ok(_) => {
                                     let session = actor.connections.get(&user_id).unwrap();
@@ -118,17 +119,6 @@ impl ChatServer {
                         .wait(ctx);
                 }
                 Err(err) => send_login_failed(user_id, err, &session.addr, ctx),
-            }
-
-            if logged_in.load(Ordering::SeqCst) {
-                if let Some(session) = self.connections.get_mut(&user_id) {
-                    self.ids.insert(info.uuid.into(), user_id);
-                    session.user = Some(info);
-
-                    if let Err(err) = session.addr.do_send(ClientPacket::Success) {
-                        info!("Could not send login success to `{}`: {}", user_id, err);
-                    }
-                }
             }
         } else {
             info!(
