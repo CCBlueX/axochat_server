@@ -97,7 +97,7 @@ impl ChatServer {
                                         "User `{}` has uuid `{}` and username `{}`",
                                         user_id, info.id, info.name
                                     );
-                                    logged_in.store(true, Ordering::Relaxed);
+                                    logged_in.store(true, Ordering::SeqCst);
                                 }
                                 Ok(_) => {
                                     let session = actor.connections.get(&user_id).unwrap();
@@ -120,7 +120,7 @@ impl ChatServer {
                 Err(err) => send_login_failed(user_id, err, &session.addr, ctx),
             }
 
-            if logged_in.load(Ordering::Relaxed) {
+            if logged_in.load(Ordering::SeqCst) {
                 if let Some(session) = self.connections.get_mut(&user_id) {
                     self.ids.insert(info.uuid.into(), user_id);
                     session.user = Some(info);
