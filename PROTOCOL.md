@@ -2,6 +2,49 @@
 The AxoChat protocol is based on websockets.
 All packets are sent to the `/ws` endpoint.
 
+<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
+**Table of Contents**
+
+- [The AxoChat protocol](#the-axochat-protocol)
+- [Structures](#structures)
+    - [Id](#id)
+        - [Example](#example)
+    - [UserInfo](#userinfo)
+        - [Example](#example-1)
+- [Packets](#packets)
+    - [Client](#client)
+        - [Error](#error)
+            - [Example](#example-2)
+        - [Message](#message)
+            - [Example](#example-3)
+        - [MojangInfo](#mojanginfo)
+            - [Example](#example-4)
+        - [NewJWT](#newjwt)
+            - [Example](#example-5)
+        - [PrivateMessage](#privatemessage)
+            - [Example](#example-6)
+        - [Success](#success)
+            - [Example](#example-7)
+    - [Server](#server)
+        - [BanUser](#banuser)
+            - [Example](#example-8)
+        - [LoginJWT](#loginjwt)
+            - [Example](#example-9)
+        - [LoginMojang](#loginmojang)
+            - [Example](#example-10)
+        - [Message](#message-1)
+            - [Example](#example-11)
+        - [PrivateMessage](#privatemessage-1)
+            - [Example](#example-12)
+        - [RequestJWT](#requestjwt)
+            - [Example](#example-13)
+        - [RequestMojangInfo](#requestmojanginfo)
+            - [Example](#example-14)
+        - [UnbanUser](#unbanuser)
+            - [Example](#example-15)
+
+<!-- markdown-toc end -->
+
 # Structures
 Some structures are used multiple times; these are described here.
 
