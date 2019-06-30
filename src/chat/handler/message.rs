@@ -94,7 +94,9 @@ impl ChatServer {
 
             sender_session
                 .addr
-                .do_send(ClientPacket::Error(ClientError::PrivateMessageNotAccepted))
+                .do_send(ClientPacket::Error {
+                    message: ClientError::PrivateMessageNotAccepted,
+                })
                 .ok();
         }
     }
@@ -109,7 +111,10 @@ impl ChatServer {
             if let Err(err) = self.validator.validate(content) {
                 info!("User `{}` tried to send invalid message: {}", user_id, err);
                 if let Error::AxoChat(err) = err {
-                    session.addr.do_send(ClientPacket::Error(err)).ok();
+                    session
+                        .addr
+                        .do_send(ClientPacket::Error { message: err })
+                        .ok();
                 }
 
                 return None;
@@ -118,7 +123,9 @@ impl ChatServer {
                 info!("User `{}` tried to send message while banned", user_id);
                 session
                     .addr
-                    .do_send(ClientPacket::Error(ClientError::Banned))
+                    .do_send(ClientPacket::Error {
+                        message: ClientError::Banned,
+                    })
                     .ok();
 
                 return None;
@@ -129,7 +136,9 @@ impl ChatServer {
             info!("`{}` is not logged in.", user_id);
             session
                 .addr
-                .do_send(ClientPacket::Error(ClientError::NotLoggedIn))
+                .do_send(ClientPacket::Error {
+                    message: ClientError::NotLoggedIn,
+                })
                 .ok();
             None
         }
@@ -144,7 +153,9 @@ fn check_ratelimit(user_id: InternalId, session: &mut SessionState) -> bool {
         );
         session
             .addr
-            .do_send(ClientPacket::Error(ClientError::RateLimited))
+            .do_send(ClientPacket::Error {
+                message: ClientError::RateLimited,
+            })
             .ok();
         true
     } else {

@@ -36,11 +36,11 @@ impl Handler<ServerPacketId> for ChatServer {
             ServerPacket::PrivateMessage { receiver, content } => {
                 self.handle_private_message(user_id, receiver, content);
             }
-            ServerPacket::BanUser(to_ban) => {
-                self.ban_user(user_id, to_ban);
+            ServerPacket::BanUser { user } => {
+                self.ban_user(user_id, user);
             }
-            ServerPacket::UnbanUser(to_ban) => {
-                self.unban_user(user_id, to_ban);
+            ServerPacket::UnbanUser { user } => {
+                self.unban_user(user_id, user);
             }
         }
     }

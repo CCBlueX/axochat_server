@@ -46,7 +46,9 @@ impl ChatServer {
         ) {
             warn!("Could not authenticate user `{}`: {}", user_id, err);
             session
-                .do_send(ClientPacket::Error(ClientError::LoginFailed))
+                .do_send(ClientPacket::Error {
+                    message: ClientError::LoginFailed,
+                })
                 .ok();
             ctx.stop();
         }
@@ -60,7 +62,9 @@ impl ChatServer {
             info!("User `{}` tried to log in multiple times.", user_id);
             session
                 .addr
-                .do_send(ClientPacket::Error(ClientError::AlreadyLoggedIn))
+                .do_send(ClientPacket::Error {
+                    message: ClientError::AlreadyLoggedIn,
+                })
                 .ok();
             return;
         } else if self.ids.contains_key(&info.uuid.into()) {
@@ -70,7 +74,9 @@ impl ChatServer {
             );
             session
                 .addr
-                .do_send(ClientPacket::Error(ClientError::AlreadyLoggedIn))
+                .do_send(ClientPacket::Error {
+                    message: ClientError::AlreadyLoggedIn,
+                })
                 .ok();
             return;
         }
@@ -95,8 +101,13 @@ impl ChatServer {
                                         actor.ids.insert(info.uuid.into(), user_id);
                                         session.user = Some(info);
 
-                                        if let Err(err) = session.addr.do_send(ClientPacket::Success) {
-                                            info!("Could not send login success to `{}`: {}", user_id, err);
+                                        if let Err(err) =
+                                            session.addr.do_send(ClientPacket::Success)
+                                        {
+                                            info!(
+                                                "Could not send login success to `{}`: {}",
+                                                user_id, err
+                                            );
                                         }
                                     }
                                 }
@@ -127,7 +138,9 @@ impl ChatServer {
             );
             session
                 .addr
-                .do_send(ClientPacket::Error(ClientError::MojangRequestMissing))
+                .do_send(ClientPacket::Error {
+                    message: ClientError::MojangRequestMissing,
+                })
                 .ok();
         }
     }

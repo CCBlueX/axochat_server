@@ -112,7 +112,9 @@ enum ClientPacket {
     MojangInfo {
         session_hash: String,
     },
-    NewJWT(String),
+    NewJWT {
+        token: String,
+    },
     Message {
         author_id: Id,
         author_info: Option<UserInfo>,
@@ -124,7 +126,9 @@ enum ClientPacket {
         content: String,
     },
     Success,
-    Error(ClientError),
+    Error {
+        message: ClientError,
+    },
 }
 
 /// A serverbound packet
@@ -146,8 +150,12 @@ enum ServerPacket {
         receiver: Id,
         content: String,
     },
-    BanUser(Id),
-    UnbanUser(Id),
+    BanUser {
+        user: Id,
+    },
+    UnbanUser {
+        user: Id,
+    },
 }
 
 #[derive(Message)]

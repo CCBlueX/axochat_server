@@ -6,14 +6,13 @@ use serde::{
     Deserialize, Serialize,
 };
 use std::{
-    env,
+    env, fmt,
     fs::{self, File},
     io::{self, Read},
     net::SocketAddr,
+    ops::Deref,
     path::PathBuf,
     time::Duration,
-    ops::Deref,
-    fmt,
 };
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]

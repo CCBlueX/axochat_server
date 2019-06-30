@@ -23,7 +23,9 @@ impl ChatServer {
                 info!("`{}` tried to (un-)ban user without permission", user_id);
                 session
                     .addr
-                    .do_send(ClientPacket::Error(ClientError::NotPermitted))
+                    .do_send(ClientPacket::Error {
+                        message: ClientError::NotPermitted,
+                    })
                     .ok();
                 return;
             }
@@ -44,13 +46,18 @@ impl ChatServer {
                 }
                 Err(Error::AxoChat(err)) => {
                     info!("Could not (un-)ban user `{}`: {}", receiver, err);
-                    session.addr.do_send(ClientPacket::Error(err)).ok();
+                    session
+                        .addr
+                        .do_send(ClientPacket::Error { message: err })
+                        .ok();
                 }
                 Err(err) => {
                     info!("Could not (un-)ban user `{}`: {}", receiver, err);
                     session
                         .addr
-                        .do_send(ClientPacket::Error(ClientError::Internal))
+                        .do_send(ClientPacket::Error {
+                            message: ClientError::Internal,
+                        })
                         .ok();
                 }
             }
@@ -58,7 +65,9 @@ impl ChatServer {
             info!("`{}` is not logged in.", user_id);
             session
                 .addr
-                .do_send(ClientPacket::Error(ClientError::NotLoggedIn))
+                .do_send(ClientPacket::Error {
+                    message: ClientError::NotLoggedIn,
+                })
                 .ok();
             return;
         }

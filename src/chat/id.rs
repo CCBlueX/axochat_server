@@ -4,18 +4,18 @@ use actix::{
     dev::{MessageResponse, ResponseChannel},
     *,
 };
+use ring::digest::{digest, SHA256};
 use serde::{
     de::{self, Deserializer, Visitor},
     ser::Serializer,
     Deserialize, Serialize,
 };
-use uuid::Uuid;
-use ring::digest::{digest, SHA256};
 use std::{
-    fmt::{self, Write},
     convert::TryInto,
+    fmt::{self, Write},
     str::FromStr,
 };
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Hash)]
 #[serde(transparent)]
@@ -62,7 +62,10 @@ impl fmt::Display for Id {
 
 impl From<Uuid> for Id {
     fn from(uuid: Uuid) -> Id {
-        Id(digest(&SHA256, uuid.as_bytes()).as_ref().try_into().unwrap())
+        Id(digest(&SHA256, uuid.as_bytes())
+            .as_ref()
+            .try_into()
+            .unwrap())
     }
 }
 

@@ -1,7 +1,7 @@
-use serde::Serialize;
-use std::{error, fmt, io};
 use derive_more::From;
 use failure::Fail;
+use serde::Serialize;
+use std::{error, fmt, io};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
