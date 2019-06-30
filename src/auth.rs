@@ -87,6 +87,7 @@ pub struct Authenticator {
     header: Header,
     key: Vec<u8>,
     valid_time: Duration,
+    allow_anonymous: bool,
 }
 
 impl Authenticator {
@@ -96,10 +97,15 @@ impl Authenticator {
             header: Header::new(cfg.algorithm),
             key: fs::read(&cfg.key_file)?,
             valid_time: *cfg.valid_time,
+            allow_anonymous: cfg.allow_anonymous,
         })
     }
 
-    pub fn auth(&self, token: &str) -> Result<UserInfo> {
+    pub fn auth(&self, token: &str, anonymous: bool) -> Result<UserInfo> {
+        if anonymous && !self.allow_anonymous {
+            return Err(ClientError::NotPermitted.into());
+        }
+
         match jsonwebtoken::decode::<Claims>(token, &self.key, &self.validation) {
             Ok(data) => Ok(data.claims.user),
             Err(err) => Err(err.into()),

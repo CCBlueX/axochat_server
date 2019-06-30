@@ -65,7 +65,7 @@ impl ChatServer {
             .get_mut(&user_id)
             .expect("could not find connection");
         if let Some(auth) = &self.authenticator {
-            match auth.auth(jwt) {
+            match auth.auth(jwt, anonymous) {
                 Ok(info) => {
                     self.ids.insert(info.uuid.into(), user_id);
                     session.user = Some(User {

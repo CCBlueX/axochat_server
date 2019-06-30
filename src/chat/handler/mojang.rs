@@ -58,6 +58,18 @@ impl ChatServer {
             .get(&user_id)
             .expect("could not find connection");
 
+        if let Some(auth) = &self.config.auth {
+            if info.anonymous && !auth.allow_anonymous {
+                info!("User `{}` tried to log anonymously.", user_id);
+                session
+                    .addr
+                    .do_send(ClientPacket::Error {
+                        message: ClientError::NotPermitted,
+                    })
+                    .ok();
+                return;
+            }
+        }
         if session.is_logged_in() {
             info!("User `{}` tried to log in multiple times.", user_id);
             session

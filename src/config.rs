@@ -83,6 +83,9 @@ pub struct AuthConfig {
 
     /// The time for which a JWT is valid
     pub valid_time: WDuration,
+
+    /// Whether users can be anonymous
+    pub allow_anonymous: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
