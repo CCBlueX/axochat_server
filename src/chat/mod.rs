@@ -7,6 +7,7 @@ pub use id::*;
 
 use crate::config::Config;
 use crate::error::*;
+use log::*;
 
 use actix::*;
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -83,6 +84,7 @@ impl Handler<Disconnect> for ChatServer {
     type Result = ();
 
     fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) {
+        info!("User `{}` disconnected.", msg.id);
         if let Some(session) = self.connections.remove(&msg.id) {
             if let Some(info) = session.user {
                 self.ids.remove(&info.uuid.into());
