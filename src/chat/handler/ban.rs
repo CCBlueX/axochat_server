@@ -1,25 +1,26 @@
-use super::{ChatServer, ClientPacket, Id};
+use super::{ChatServer, ClientPacket};
 use crate::chat::{InternalId, SuccessReason};
 
 use crate::error::*;
 use log::*;
+use uuid::Uuid;
 
 impl ChatServer {
-    pub(super) fn ban_user(&mut self, user_id: InternalId, to_ban: Id) {
+    pub(super) fn ban_user(&mut self, user_id: InternalId, to_ban: &Uuid) {
         self.handle_user(user_id, to_ban, true);
     }
 
-    pub(super) fn unban_user(&mut self, user_id: InternalId, to_unban: Id) {
+    pub(super) fn unban_user(&mut self, user_id: InternalId, to_unban: &Uuid) {
         self.handle_user(user_id, to_unban, false);
     }
 
-    fn handle_user(&mut self, user_id: InternalId, receiver: Id, ban: bool) {
+    fn handle_user(&mut self, user_id: InternalId, receiver: &Uuid, ban: bool) {
         let session = self
             .connections
             .get(&user_id)
             .expect("could not find connection");
         if let Some(info) = &session.user {
-            if !self.moderation.is_moderator(&info.uuid.into()) {
+            if !self.moderation.is_moderator(&info.uuid) {
                 info!("`{}` tried to (un-)ban user without permission", user_id);
                 session
                     .addr
@@ -31,9 +32,9 @@ impl ChatServer {
             }
 
             let res = if ban {
-                self.moderation.ban(&receiver)
+                self.moderation.ban(receiver)
             } else {
-                self.moderation.unban(&receiver)
+                self.moderation.unban(receiver)
             };
             match res {
                 Ok(()) => {

@@ -87,7 +87,7 @@ impl Handler<Disconnect> for ChatServer {
         info!("User `{}` disconnected.", msg.id);
         if let Some(session) = self.connections.remove(&msg.id) {
             if let Some(info) = session.user {
-                self.ids.remove(&info.uuid.into());
+                self.ids.remove(&info.name.as_str().into());
             }
         }
     }
@@ -145,25 +145,12 @@ enum ClientPacket {
 enum ServerPacket {
     RequestMojangInfo,
     LoginMojang(User),
-    LoginJWT {
-        token: String,
-        anonymous: bool,
-        allow_messages: bool,
-    },
+    LoginJWT { token: String, allow_messages: bool },
     RequestJWT,
-    Message {
-        content: String,
-    },
-    PrivateMessage {
-        receiver: Id,
-        content: String,
-    },
-    BanUser {
-        user: Id,
-    },
-    UnbanUser {
-        user: Id,
-    },
+    Message { content: String },
+    PrivateMessage { receiver: Id, content: String },
+    BanUser { user: Uuid },
+    UnbanUser { user: Uuid },
 }
 
 #[derive(Message)]
@@ -176,7 +163,6 @@ struct ServerPacketId {
 struct User {
     pub name: String,
     pub uuid: Uuid,
-    pub anonymous: bool,
     /// Should this user allow private messages?
     pub allow_messages: bool,
 }

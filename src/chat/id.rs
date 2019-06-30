@@ -15,7 +15,6 @@ use std::{
     fmt::{self, Write},
     str::FromStr,
 };
-use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Hash)]
 #[serde(transparent)]
@@ -60,9 +59,9 @@ impl fmt::Display for Id {
     }
 }
 
-impl From<Uuid> for Id {
-    fn from(uuid: Uuid) -> Id {
-        Id(digest(&SHA256, uuid.as_bytes())
+impl From<&str> for Id {
+    fn from(name: &str) -> Id {
+        Id(digest(&SHA256, name.as_bytes())
             .as_ref()
             .try_into()
             .unwrap())

@@ -57,7 +57,6 @@ impl ChatServer {
         &mut self,
         user_id: InternalId,
         jwt: &str,
-        anonymous: bool,
         allow_messages: bool,
     ) {
         let session = self
@@ -65,13 +64,12 @@ impl ChatServer {
             .get_mut(&user_id)
             .expect("could not find connection");
         if let Some(auth) = &self.authenticator {
-            match auth.auth(jwt, anonymous) {
+            match auth.auth(jwt) {
                 Ok(info) => {
-                    self.ids.insert(info.uuid.into(), user_id);
+                    self.ids.insert(info.name.as_str().into(), user_id);
                     session.user = Some(User {
                         name: info.name,
                         uuid: info.uuid,
-                        anonymous,
                         allow_messages,
                     });
                     if let Err(err) = session.addr.do_send(ClientPacket::Success {

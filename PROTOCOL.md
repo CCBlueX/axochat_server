@@ -33,8 +33,7 @@ All packets are sent to the `/ws` endpoint.
 Some structures are used multiple times; these are described here.
 
 ## Id
-An `Id` is a SHA256 hashed uuid of a user.
-When generating, the uuid must be treated as its raw bytes.
+An `Id` is a SHA256 hashed username.
 It is encoded as a hex string.
 
 ### Example
@@ -205,7 +204,7 @@ A client can send this packet to ban other users from using this chat.
 {
     "m": "BanUser",
     "c": {
-        "user": "40ae0781f85042de8108a323228a3a2488a7fa84d6d26a023718941f01c5f44c"
+        "user": "069a79f4-44e9-4726-a5be-fca90e38aaf5"
     }
 }
 ```
@@ -216,7 +215,6 @@ it will send [Success](#success) if the login was successful.
 
 - `token` can be retrieved by sending [RequestJWT](#requestjwt) on an already
 - authenticated connection.
-- If `anonymous` is true, other clients will never know `name`.
 - If `allow_messages` is true, other clients may send private messages
   to this client.
 
@@ -226,7 +224,6 @@ it will send [Success](#success) if the login was successful.
     "m": "LoginJWT",
     "c": {
         "token": "VGhpcyBjb3VsZCBiZSBhIGpzb24gd2ViIHRva2VuLCBidXQgaXQgaXNuJ3QK",
-        "anonymous": false,
         "allow_messages": true,
     }
 }
@@ -241,7 +238,6 @@ it will send [Success](#success) if the login was successful.
 
 - `name` needs to be associated with the uuid.
 - `uuid` is not guaranteed to be hyphenated.
-- If `anonymous` is true, other clients will never know `name`.
 - If `allow_messages` is true, other clients may send private messages
   to this client.
 
@@ -252,10 +248,7 @@ it will send [Success](#success) if the login was successful.
     "c": {
         "name": "Notch",
         "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5",
-        "anonymous": false,
         "allow_messages": true
- 
-
    }
 }
 ```
@@ -329,7 +322,7 @@ A client can send this packet to unban other users.
 {
     "m": "UnbanUser",
     "c": {
-        "user": "584b4914b5f6fdf686398be186799633a3149d87ad55ff82c91020599ddc7148"
+        "user": "069a79f4-44e9-4726-a5be-fca90e38aaf5"
     }
 }
 ```

@@ -1,4 +1,3 @@
-use crate::chat::Id;
 use crate::config::ModConfig;
 use crate::error::*;
 use hashbrown::HashSet;
@@ -7,11 +6,12 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     path::Path,
 };
+use uuid::Uuid;
 
 pub struct Moderation {
     config: ModConfig,
-    moderators: HashSet<Id>,
-    banned: HashSet<Id>,
+    moderators: HashSet<Uuid>,
+    banned: HashSet<Uuid>,
 }
 
 impl Moderation {
@@ -25,12 +25,12 @@ impl Moderation {
         })
     }
 
-    pub fn is_moderator(&self, user: &Id) -> bool {
+    pub fn is_moderator(&self, user: &Uuid) -> bool {
         self.moderators.contains(user)
     }
 
     /// Ban user if user is not a moderator.
-    pub fn ban(&mut self, user: &Id) -> Result<()> {
+    pub fn ban(&mut self, user: &Uuid) -> Result<()> {
         if self.is_moderator(user) {
             Err(ClientError::NotPermitted.into())
         } else {
@@ -40,14 +40,14 @@ impl Moderation {
                     .create(true)
                     .open(&self.config.banned)?;
 
-                writeln!(file, "{}", user)?;
+                writeln!(file, "{}", user.to_hyphenated())?;
             }
 
             Ok(())
         }
     }
 
-    pub fn unban(&mut self, user: &Id) -> Result<()> {
+    pub fn unban(&mut self, user: &Uuid) -> Result<()> {
         if self.banned.remove(user) {
             let mut writer = BufWriter::new(File::create(&self.config.banned)?);
 
@@ -61,12 +61,12 @@ impl Moderation {
         }
     }
 
-    pub fn is_banned(&self, user: &Id) -> bool {
+    pub fn is_banned(&self, user: &Uuid) -> bool {
         self.banned.contains(user)
     }
 }
 
-fn read_ids(path: &Path) -> Result<HashSet<Id>> {
+fn read_ids(path: &Path) -> Result<HashSet<Uuid>> {
     let file = match File::open(path) {
         Ok(file) => file,
         Err(ref err) if err.kind() == std::io::ErrorKind::NotFound => {

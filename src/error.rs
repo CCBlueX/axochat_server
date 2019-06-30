@@ -26,6 +26,8 @@ pub enum Error {
     RustTLSNoMsg,
     #[snafu(display("JWT: {}", source))]
     JWT { source: jsonwebtoken::errors::Error },
+    #[snafu(display("UUID parsing: {}", source))]
+    Uuid { source: uuid::parser::ParseError },
     #[snafu(display("axochat: {}", source))]
     AxoChat { source: ClientError },
 }

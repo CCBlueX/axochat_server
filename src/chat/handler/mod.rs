@@ -27,20 +27,19 @@ impl Handler<ServerPacketId> for ChatServer {
             }
             ServerPacket::LoginJWT {
                 token,
-                anonymous,
                 allow_messages,
             } => {
-                self.handle_login_jwt(user_id, &token, anonymous, allow_messages);
+                self.handle_login_jwt(user_id, &token, allow_messages);
             }
             ServerPacket::Message { content } => self.handle_message(user_id, content),
             ServerPacket::PrivateMessage { receiver, content } => {
                 self.handle_private_message(user_id, receiver, content);
             }
             ServerPacket::BanUser { user } => {
-                self.ban_user(user_id, user);
+                self.ban_user(user_id, &user);
             }
             ServerPacket::UnbanUser { user } => {
-                self.unban_user(user_id, user);
+                self.unban_user(user_id, &user);
             }
         }
     }

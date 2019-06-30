@@ -57,18 +57,6 @@ impl ChatServer {
             .get(&user_id)
             .expect("could not find connection");
 
-        if let Some(auth) = &self.config.auth {
-            if info.anonymous && !auth.allow_anonymous {
-                info!("User `{}` tried to log anonymously.", user_id);
-                session
-                    .addr
-                    .do_send(ClientPacket::Error {
-                        message: ClientError::NotPermitted,
-                    })
-                    .ok();
-                return;
-            }
-        }
         if session.is_logged_in() {
             info!("User `{}` tried to log in multiple times.", user_id);
             session
@@ -78,7 +66,7 @@ impl ChatServer {
                 })
                 .ok();
             return;
-        } else if self.ids.contains_key(&info.uuid.into()) {
+        } else if self.ids.contains_key(&info.name.as_str().into()) {
             info!(
                 "User `{}` is already logged in as `{}`.",
                 user_id, info.name
@@ -109,7 +97,7 @@ impl ChatServer {
                                     );
 
                                     if let Some(session) = actor.connections.get_mut(&user_id) {
-                                        actor.ids.insert(info.uuid.into(), user_id);
+                                        actor.ids.insert(info.name.as_str().into(), user_id);
                                         session.user = Some(info);
 
                                         if let Err(err) =
