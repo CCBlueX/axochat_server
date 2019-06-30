@@ -111,7 +111,7 @@ fn start_server(config: Config) -> Result<()> {
             let mut key_file = BufReader::new(File::open(key)?);
             let mut keys = rsa_private_keys(&mut key_file)?;
             config.set_single_cert(cert_chain, keys.remove(0))?;
-            server.bind_rustls("127.0.0.1:8443", config)?.start();
+            server.bind_rustls(config.net.address, config)?.start();
         }
     } else {
         server.bind(config.net.address)?.start();
