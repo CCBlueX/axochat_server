@@ -1,4 +1,4 @@
-use crate::chat::{ChatServer, ClientPacket, InternalId, User};
+use crate::chat::{ChatServer, ClientPacket, InternalId, User, SuccessReason};
 
 use crate::error::*;
 use log::*;
@@ -113,7 +113,9 @@ impl ChatServer {
                                         session.user = Some(info);
 
                                         if let Err(err) =
-                                            session.addr.do_send(ClientPacket::Success)
+                                            session.addr.do_send(ClientPacket::Success {
+                                                reason: SuccessReason::Login,
+                                            })
                                         {
                                             info!(
                                                 "Could not send login success to `{}`: {}",

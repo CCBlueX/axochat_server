@@ -1,5 +1,5 @@
 use super::{ChatServer, ClientPacket, Id};
-use crate::chat::InternalId;
+use crate::chat::{InternalId, SuccessReason};
 
 use crate::error::*;
 use log::*;
@@ -37,12 +37,16 @@ impl ChatServer {
             };
             match res {
                 Ok(()) => {
-                    if ban {
+                    let reason = if ban {
                         info!("User `{}` banned.", receiver);
+                        SuccessReason::Ban
                     } else {
                         info!("User `{}` unbanned.", receiver);
-                    }
-                    session.addr.do_send(ClientPacket::Success).ok();
+                        SuccessReason::Unban
+                    };
+                    let _ = session.addr.do_send(ClientPacket::Success {
+                        reason,
+                    });
                 }
                 Err(Error::AxoChat { source }) => {
                     info!("Could not (un-)ban user `{}`: {}", receiver, source);

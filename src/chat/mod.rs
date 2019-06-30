@@ -131,7 +131,9 @@ enum ClientPacket {
         author_info: Option<UserInfo>,
         content: String,
     },
-    Success,
+    Success {
+        reason: SuccessReason,
+    },
     Error {
         message: ClientError,
     },
@@ -177,4 +179,11 @@ struct User {
     pub anonymous: bool,
     /// Should this user allow private messages?
     pub allow_messages: bool,
+}
+
+#[derive(Serialize, Deserialize, Copy, Clone)]
+enum SuccessReason {
+    Login,
+    Ban,
+    Unban,
 }

@@ -1,6 +1,6 @@
 use super::{ChatServer, ClientPacket};
 use crate::auth::UserInfo;
-use crate::chat::{InternalId, User};
+use crate::chat::{InternalId, User, SuccessReason};
 
 use crate::error::*;
 use log::*;
@@ -74,7 +74,9 @@ impl ChatServer {
                         anonymous,
                         allow_messages,
                     });
-                    if let Err(err) = session.addr.do_send(ClientPacket::Success) {
+                    if let Err(err) = session.addr.do_send(ClientPacket::Success {
+                        reason: SuccessReason::Login,
+                    }) {
                         info!("Could not send login success to `{}`: {}", user_id, err);
                     }
                 }
