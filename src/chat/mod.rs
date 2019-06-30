@@ -33,11 +33,6 @@ pub fn chat_route(
     )
 }
 
-#[derive(Clone)]
-pub struct ServerState {
-    pub addr: Addr<ChatServer>,
-}
-
 pub struct ChatServer {
     connections: HashMap<InternalId, SessionState>,
     ids: HashMap<Id, InternalId>,

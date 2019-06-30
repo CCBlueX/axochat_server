@@ -76,11 +76,8 @@ fn start_server(config: Config) -> Result<()> {
     let server = chat::ChatServer::new(server_config).start();
 
     let server = HttpServer::new(move || {
-        let server_state = chat::ServerState {
-            addr: server.clone(),
-        };
         App::new()
-            .data(server_state)
+            .data(server.clone())
             .service(web::resource("/ws").to(chat::chat_route))
     });
 
