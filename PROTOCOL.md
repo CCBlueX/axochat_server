@@ -176,12 +176,16 @@ This packet is sent after either
 [BanUser](#banuser) or [UnbanUser](#unbanuser)
 were processed successfully.
 
-- `reason` is the reason for the success
+- `reason` is the reason for the success; it is one of the following possible
+  values:
+  - `Login`
+  - `Ban`
+  - `Unban`
 
 **Example**
 ```json
 {
-    "m": "Success"
+    "m": "Success",
     "c": {
         "reason": "Login"
     }
