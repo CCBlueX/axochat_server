@@ -1,33 +1,33 @@
 use derive_more::From;
-use failure::Fail;
+use snafu::Snafu;
 use serde::Serialize;
 use std::{error, fmt, io};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From, Fail)]
+#[derive(Debug, Snafu, From)]
 pub enum Error {
-    #[fail(display = "I/O: {}", _0)]
-    IO(io::Error),
-    #[fail(display = "JSON: {}", _0)]
-    JSON(serde_json::error::Error),
-    #[fail(display = "TOML: {}", _0)]
-    TOML(toml::de::Error),
-    #[fail(display = "actix-web: {}", _0)]
-    Actix(actix_web::Error),
+    #[snafu(display("I/O: {}", source))]
+    IO { source: io::Error },
+    #[snafu(display("JSON: {}", source))]
+    JSON { source: serde_json::error::Error },
+    #[snafu(display("TOML: {}", source))]
+    TOML { source: toml::de::Error },
+    #[snafu(display("actix-web: {}", source))]
+    Actix { source: actix_web::Error },
     #[cfg(feature = "ssl")]
-    #[fail(display = "OpenSSL: {}", _0)]
-    OpenSSL(openssl::error::ErrorStack),
+    #[snafu(display("OpenSSL: {}", source))]
+    OpenSSL { source: openssl::error::ErrorStack },
     #[cfg(feature = "rust-tls")]
-    #[fail(display = "rustls: {}", _0)]
-    RustTLS(rustls::TLSError),
+    #[snafu(display("rustls: {}", source))]
+    RustTLS { source: rustls::TLSError },
     #[cfg(feature = "rust-tls")]
-    #[fail(display = "rustls")]
+    #[snafu(display("rustls"))]
     RustTLSNoMsg,
-    #[fail(display = "JWT: {}", _0)]
-    JWT(jsonwebtoken::errors::Error),
-    #[fail(display = "axochat: {}", _0)]
-    AxoChat(ClientError),
+    #[snafu(display("JWT: {}", source))]
+    JWT { source: jsonwebtoken::errors::Error },
+    #[snafu(display("axochat: {}", source))]
+    AxoChat { source: ClientError },
 }
 
 /// A client-facing error.
@@ -54,26 +54,28 @@ impl error::Error for ClientError {}
 
 impl fmt::Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::ClientError::*;
+
         match self {
-            ClientError::NotSupported => write!(f, "method not supported"),
-            ClientError::LoginFailed => write!(f, "login failed"),
-            ClientError::NotLoggedIn => write!(f, "not logged in"),
-            ClientError::AlreadyLoggedIn => write!(f, "already logged in"),
-            ClientError::MojangRequestMissing => write!(f, "mojang request missing"),
-            ClientError::NotPermitted => write!(f, "not permitted"),
-            ClientError::NotBanned => write!(f, "not banned"),
-            ClientError::Banned => write!(f, "banned"),
-            ClientError::RateLimited => write!(f, "rate limited"),
-            ClientError::PrivateMessageNotAccepted => write!(f, "private message not accepted"),
-            ClientError::EmptyMessage => write!(f, "empty message"),
-            ClientError::MessageTooLong => write!(f, "message was too long"),
-            ClientError::InvalidCharacter(ch) => write!(
+            NotSupported => write!(f, "method not supported"),
+            LoginFailed => write!(f, "login failed"),
+            NotLoggedIn => write!(f, "not logged in"),
+            AlreadyLoggedIn => write!(f, "already logged in"),
+            MojangRequestMissing => write!(f, "mojang request missing"),
+            NotPermitted => write!(f, "not permitted"),
+            NotBanned => write!(f, "not banned"),
+            Banned => write!(f, "banned"),
+            RateLimited => write!(f, "rate limited"),
+            PrivateMessageNotAccepted => write!(f, "private message not accepted"),
+            EmptyMessage => write!(f, "empty message"),
+            MessageTooLong => write!(f, "message was too long"),
+            InvalidCharacter(ch) => write!(
                 f,
                 "message contained invalid character: `{}`",
                 ch.escape_default()
             ),
-            ClientError::InvalidId => write!(f, "invalid id"),
-            ClientError::Internal => write!(f, "internal error"),
+            InvalidId => write!(f, "invalid id"),
+            Internal => write!(f, "internal error"),
         }
     }
 }

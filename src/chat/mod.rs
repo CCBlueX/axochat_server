@@ -9,7 +9,8 @@ use crate::config::Config;
 use crate::error::*;
 
 use actix::*;
-use actix_web::{ws, HttpRequest, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
+use actix_web_actors::ws;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::{Authenticator, UserInfo};
@@ -20,8 +21,12 @@ use rand::{rngs::OsRng, SeedableRng};
 use rand_hc::Hc128Rng;
 use uuid::Uuid;
 
-pub fn chat_route(req: &HttpRequest<ServerState>) -> actix_web::Result<HttpResponse> {
-    ws::start(req, session::Session::new(InternalId::new(0)))
+pub fn chat_route(
+    req: HttpRequest,
+    stream: web::Payload,
+    srv: web::Data<Addr<ChatServer>>,
+) -> actix_web::Result<HttpResponse> {
+    ws::start(session::Session::new(InternalId::new(0), srv.get_ref().clone()), &req, stream)
 }
 
 #[derive(Clone)]

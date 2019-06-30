@@ -32,7 +32,7 @@ impl Moderation {
     /// Ban user if user is not a moderator.
     pub fn ban(&mut self, user: &Id) -> Result<()> {
         if self.is_moderator(user) {
-            Err(Error::AxoChat(ClientError::NotPermitted))
+            Err(ClientError::NotPermitted.into())
         } else {
             if self.banned.insert(user.clone()) {
                 let mut file = OpenOptions::new()
@@ -57,7 +57,7 @@ impl Moderation {
 
             Ok(())
         } else {
-            Err(Error::AxoChat(ClientError::NotBanned))
+            Err(ClientError::NotBanned.into())
         }
     }
 

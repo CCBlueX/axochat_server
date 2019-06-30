@@ -110,10 +110,10 @@ impl ChatServer {
         if let Some(info) = &session.user {
             if let Err(err) = self.validator.validate(content) {
                 info!("User `{}` tried to send invalid message: {}", user_id, err);
-                if let Error::AxoChat(err) = err {
+                if let Error::AxoChat { source } = err {
                     session
                         .addr
-                        .do_send(ClientPacket::Error { message: err })
+                        .do_send(ClientPacket::Error { message: source })
                         .ok();
                 }
 

@@ -53,15 +53,15 @@ impl MessageValidator {
 
     pub fn validate(&self, msg: &str) -> Result<()> {
         if msg.is_empty() {
-            return Err(Error::AxoChat(ClientError::EmptyMessage));
+            return Err(ClientError::EmptyMessage.into());
         }
 
         for (char_index, ch) in msg.chars().enumerate() {
             if char_index >= self.cfg.max_length {
-                return Err(Error::AxoChat(ClientError::MessageTooLong));
+                return Err(ClientError::MessageTooLong.into());
             }
             if ch != ' ' && !ch.is_ascii_graphic() && !ch.is_alphanumeric() {
-                return Err(Error::AxoChat(ClientError::InvalidCharacter(ch)));
+                return Err(ClientError::InvalidCharacter(ch).into());
             }
         }
 

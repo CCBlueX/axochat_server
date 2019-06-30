@@ -1,13 +1,13 @@
 [package]
 name = "axochat"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["frozolotl <frozolotl@protonmail.com>"]
 edition = "2018"
 
 [features]
 default = ["ssl"]
 
-ssl = ["openssl", "actix-web/alpn"]
+ssl = ["openssl", "actix-web/ssl"]
 rust-tls = ["rustls", "actix-web/rust-tls"]
 
 [dependencies]
@@ -22,14 +22,15 @@ humantime = "1.2"
 rand = "0.6"
 rand_hc = "0.1"
 uuid = { version = "0.7", features = ["serde", "u128"] }
-derive_more = "0.14"
-failure = "0.1"
+derive_more = "0.15.0"
+snafu = "0.4"
 
 openssl = { version = "0.10", features = ["v110"], optional = true }
-rustls = { version = "0.14", optional = true }
-ring = "0.13"
-jsonwebtoken = "5.0"
-actix-web = "0.7"
-actix = "0.7"
+rustls = { version = "0.15", optional = true }
+ring = "0.14"
+jsonwebtoken = "6.0"
+actix-web = "1.0"
+actix-web-actors = "1.0"
+actix = "0.8"
 futures = "0.1"
 url = "1.7"

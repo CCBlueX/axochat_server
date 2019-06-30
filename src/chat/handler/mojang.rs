@@ -115,7 +115,7 @@ impl ChatServer {
                                     let session = actor.connections.get(&user_id).unwrap();
                                     send_login_failed(
                                         user_id,
-                                        Error::AxoChat(ClientError::InvalidId),
+                                        ClientError::InvalidId.into(),
                                         &session.addr,
                                         ctx,
                                     )

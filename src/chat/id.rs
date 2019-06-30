@@ -78,7 +78,7 @@ impl FromStr for Id {
         for (i, c) in s.chars().enumerate() {
             let m = c
                 .to_digit(16)
-                .ok_or_else(|| Error::AxoChat(ClientError::InvalidId))? as u8;
+                .ok_or_else(|| Error::from(ClientError::InvalidId))? as u8;
 
             if i % 2 == 0 {
                 bytes[i / 2] = m << 4;

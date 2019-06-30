@@ -10,8 +10,8 @@ use error::*;
 use log::*;
 use structopt::*;
 
-use actix::{Arbiter, System};
-use actix_web::{server::HttpServer, App};
+use actix::*;
+use actix_web::{web, App, HttpServer};
 use uuid::Uuid;
 
 #[cfg(feature = "rust-tls")]
@@ -57,7 +57,7 @@ fn main() -> Result<()> {
                 Some(auth) => auth::Authenticator::new(&auth),
                 None => {
                     eprintln!("Please add a `auth` segment to your configuration file.");
-                    Err(Error::AxoChat(ClientError::NotSupported))
+                    Err(ClientError::NotSupported.into())
                 }
             }?;
             let token = auth.new_token(auth::UserInfo {
@@ -73,13 +73,15 @@ fn main() -> Result<()> {
 fn start_server(config: Config) -> Result<()> {
     let system = System::new("axochat");
     let server_config = config.clone();
-    let server = Arbiter::start(|_| chat::ChatServer::new(server_config));
+    let server = chat::ChatServer::new(server_config).start();
 
     let server = HttpServer::new(move || {
         let server_state = chat::ServerState {
             addr: server.clone(),
         };
-        App::with_state(server_state).resource("/ws", |r| r.route().f(chat::chat_route))
+        App::new()
+            .data(server_state)
+            .service(web::resource("/ws").to(chat::chat_route))
     });
 
     if let (Some(cert), Some(key)) = (config.net.cert_file, config.net.key_file) {
@@ -116,7 +118,7 @@ fn start_server(config: Config) -> Result<()> {
     }
 
     info!("Started server at {}", config.net.address);
-    system.run();
+    system.run()?;
 
     Ok(())
 }

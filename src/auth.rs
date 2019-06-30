@@ -1,7 +1,7 @@
 use crate::error::*;
 use log::*;
 
-use actix_web::{client::ClientRequest, http::StatusCode, HttpMessage};
+use actix_web::{client::Client, http::StatusCode};
 use futures::Future;
 use serde::{de::IgnoredAny, Deserialize, Serialize};
 use url::Url;
@@ -24,10 +24,10 @@ pub fn authenticate(
         .append_pair("username", username)
         .append_pair("serverId", server_id);
 
-    Ok(ClientRequest::get(url)
-        .finish()?
+    Ok(Client::new()
+        .get(url.as_str())
         .send()
-        .map_err(|err| Error::Actix(err.into()))
+        .map_err(|err| Error::Actix { source: err.into() })
         .and_then(|response| {
             if response.status() == StatusCode::OK {
                 Ok(response)
@@ -36,7 +36,7 @@ pub fn authenticate(
                 Err(ClientError::LoginFailed.into())
             }
         })
-        .and_then(|response| response.json().map_err(|err| Error::Actix(err.into()))))
+        .and_then(|mut response| response.json().map_err(|err| Error::Actix { source: err.into() })))
 }
 
 #[derive(Debug, Deserialize)]

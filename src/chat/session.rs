@@ -1,29 +1,29 @@
 use super::{
-    connect::Connect, ClientPacket, Disconnect, InternalId, ServerPacket, ServerPacketId,
-    ServerState,
+    connect::Connect, ChatServer, ClientPacket, Disconnect, InternalId, ServerPacket,
+    ServerPacketId,
 };
 
 use log::*;
 
 use actix::*;
-use actix_web::ws;
+use actix_web_actors::ws;
 
 pub struct Session {
     id: InternalId,
+    addr: Addr<ChatServer>,
 }
 
 impl Session {
-    pub fn new(id: InternalId) -> Session {
-        Session { id }
+    pub fn new(id: InternalId, addr: Addr<ChatServer>) -> Session {
+        Session { id, addr }
     }
 }
 
 impl Actor for Session {
-    type Context = ws::WebsocketContext<Self, ServerState>;
+    type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        ctx.state()
-            .addr
+        self.addr
             .send(Connect::new(ctx.address().recipient()))
             .into_actor(self)
             .then(|res, actor, ctx| {
@@ -41,8 +41,8 @@ impl Actor for Session {
             .wait(ctx)
     }
 
-    fn stopping(&mut self, ctx: &mut Self::Context) -> Running {
-        ctx.state().addr.do_send(Disconnect { id: self.id });
+    fn stopping(&mut self, _ctx: &mut Self::Context) -> Running {
+        self.addr.do_send(Disconnect { id: self.id });
         Running::Stop
     }
 }
@@ -54,8 +54,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
             ws::Message::Ping(msg) => ctx.pong(&msg),
             ws::Message::Pong(_msg) => {}
             ws::Message::Text(msg) => match serde_json::from_slice::<ServerPacket>(msg.as_ref()) {
-                Ok(packet) => ctx
-                    .state()
+                Ok(packet) => self
                     .addr
                     .send(ServerPacketId {
                         user_id: self.id,
@@ -73,6 +72,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
             ws::Message::Binary(_msg) => {
                 warn!("Can't decode binary messages.");
             }
+            ws::Message::Nop => {}
             ws::Message::Close(Some(reason)) => {
                 info!(
                     "Connection `{}` closed; code: {:?}, reason: {:?}",
@@ -92,7 +92,7 @@ impl Handler<ClientPacket> for Session {
     type Result = ();
 
     fn handle(&mut self, msg: ClientPacket, ctx: &mut Self::Context) {
-        let bytes = serde_json::to_vec(&msg).expect("could not encode message");
-        ctx.text(bytes);
+        let msg = serde_json::to_string(&msg).expect("could not encode message");
+        ctx.text(msg);
     }
 }

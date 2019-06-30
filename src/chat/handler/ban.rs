@@ -44,11 +44,11 @@ impl ChatServer {
                     }
                     session.addr.do_send(ClientPacket::Success).ok();
                 }
-                Err(Error::AxoChat(err)) => {
-                    info!("Could not (un-)ban user `{}`: {}", receiver, err);
+                Err(Error::AxoChat { source }) => {
+                    info!("Could not (un-)ban user `{}`: {}", receiver, source);
                     session
                         .addr
-                        .do_send(ClientPacket::Error { message: err })
+                        .do_send(ClientPacket::Error { message: source })
                         .ok();
                 }
                 Err(err) => {
