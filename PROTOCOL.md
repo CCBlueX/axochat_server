@@ -65,11 +65,11 @@ but is usually a response to a failed action of the client.
 
 ### Message
 This packet will be sent to every authenticated client,
-if another client successfully [sent a message](#message) to the server.
+if another client successfully [sent a message](#message-1) to the server.
 
-`author_id` is an [Id](#id).
-`author_info` is optional and described in detail in [UserInfo](#userinfo).
-`content` is any message fitting the validation scheme of the server.
+- `author_id` is an [Id](#id).
+- `author_info` is optional and described in detail in [UserInfo](#userinfo).
+- `content` is any message fitting the validation scheme of the server.
 
 #### Example
 ```json
@@ -88,7 +88,7 @@ if another client successfully [sent a message](#message) to the server.
 
 ### MojangInfo
 After the client sent the server a [RequestMojangInfo](#requestmojanginfo)
-packet, the server will provide the client with a *session hash*.
+packet, the server will provide the client with a `session_hash`.
 A session hash is synonymous with a *server id* in the context of
 [authentication with mojang](https://wiki.vg/Protocol_Encryption#Authentication).
 The client has to send a [LoginMojang](#loginmojang) packet to the server
@@ -121,12 +121,12 @@ This token can be used in the [LoginJWT](#loginjwt) packet.
 
 ### PrivateMessage
 This packet will be sent to a authenticated client with `allow_messages` turned on,
-if another client successfully [sent a private message](#privatemessage)
+if another client successfully [sent a private message](#privatemessage-1)
 to the server with the [id](#id).
 
-`author_id` is an [Id](#id).
-`author_info` is optional and described in detail in [UserInfo](#userinfo).
-`content` is any message fitting the validation scheme of the server.
+- `author_id` is an [Id](#id).
+- `author_info` is optional and described in detail in [UserInfo](#userinfo).
+- `content` is any message fitting the validation scheme of the server.
 
 #### Example
 ```json
@@ -162,7 +162,7 @@ Server Packets are received by the server.
 ### BanUser
 A client can send this packet to ban other users from using this chat.
 
-`user` is an [Id](#id).
+- `user` is an [Id](#id).
 
 #### Example
 ```json
@@ -178,11 +178,11 @@ A client can send this packet to ban other users from using this chat.
 To login using a json web token, the client has to send a `LoginJWT` packet.
 it will send [Success](#success) if the login was successful.
 
-`token` can be retrieved by sending [RequestJWT](#requestjwt) on an already
-authenticated connection.
-If `anonymous` is true, other clients will never know `name`.
-If `allow_messages` is true, other clients may send private messages
-to this client.
+- `token` can be retrieved by sending [RequestJWT](#requestjwt) on an already
+- authenticated connection.
+- If `anonymous` is true, other clients will never know `name`.
+- If `allow_messages` is true, other clients may send private messages
+  to this client.
 
 #### Example
 ```json
@@ -203,11 +203,11 @@ it has to send a `LoginMojang` packet to the server.
 After the server receives a `LoginMojang` packet,
 it will send [Success](#success) if the login was successful.
 
-`name` needs to be associated with the uuid.
-`uuid` is not guaranteed to be hyphenated.
-If `anonymous` is true, other clients will never know `name`.
-If `allow_messages` is true, other clients may send private messages
-to this client.
+- `name` needs to be associated with the uuid.
+- `uuid` is not guaranteed to be hyphenated.
+- If `anonymous` is true, other clients will never know `name`.
+- If `allow_messages` is true, other clients may send private messages
+  to this client.
 
 #### Example
 ```json
@@ -218,7 +218,9 @@ to this client.
         "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5",
         "anonymous": false,
         "allow_messages": true
-    }
+ 
+
+   }
 }
 ```
 
@@ -240,7 +242,7 @@ as [Message](#message) if it fits the validation scheme.
 The `content` of this packet will be sent to the specified client
 as [PrivateMessage](#privatemessage) if it fits the validation scheme.
 
-`receiver` is an [Id](#id).
+- `receiver` is an [Id](#id).
 
 #### Example
 ```json
@@ -258,6 +260,8 @@ To login using [LoginJWT](#loginjwt), a client needs to own a json web token.
 This token can be retrieved by sending `RequestJWT` as an already authenticated
 client to the server.
 The server will send a [NewJWT](#newjwt) packet to the client.
+
+This packet has no body.
 
 #### Example
 ```json
@@ -282,7 +286,7 @@ This packet has no body.
 ### UnbanUser
 A client can send this packet to unban other users.
 
-`user` is an [Id](#id).
+- `user` is an [Id](#id).
 
 #### Example
 ```json
