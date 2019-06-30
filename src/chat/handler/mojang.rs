@@ -42,7 +42,7 @@ impl ChatServer {
             user_id: InternalId,
             err: Error,
             session: &Recipient<ClientPacket>,
-            ctx: &mut Context<ChatServer>,
+            _ctx: &mut Context<ChatServer>,
         ) {
             warn!("Could not authenticate user `{}`: {}", user_id, err);
             session
@@ -50,7 +50,6 @@ impl ChatServer {
                     message: ClientError::LoginFailed,
                 })
                 .ok();
-            ctx.stop();
         }
 
         let session = self

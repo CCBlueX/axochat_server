@@ -26,14 +26,13 @@ impl Actor for Session {
         self.addr
             .send(Connect::new(ctx.address().recipient()))
             .into_actor(self)
-            .then(|res, actor, ctx| {
+            .then(|res, actor, _ctx| {
                 match res {
                     Ok(id) => {
                         actor.id = id;
                     }
                     Err(err) => {
                         warn!("Could not accept connection: {}", err);
-                        ctx.stop();
                     }
                 }
                 fut::ok(())
@@ -78,11 +77,9 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
                     "Connection `{}` closed; code: {:?}, reason: {:?}",
                     self.id, reason.code, reason.description
                 );
-                ctx.stop();
             }
             ws::Message::Close(None) => {
                 info!("Connection `{}` closed.", self.id);
-                ctx.stop();
             }
         }
     }
