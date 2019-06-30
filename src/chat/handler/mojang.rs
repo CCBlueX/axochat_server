@@ -1,4 +1,4 @@
-use crate::chat::{ChatServer, ClientPacket, InternalId, User, SuccessReason};
+use crate::chat::{ChatServer, ClientPacket, InternalId, SuccessReason, User};
 
 use crate::error::*;
 use log::*;

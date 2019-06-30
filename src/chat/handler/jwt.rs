@@ -1,6 +1,6 @@
 use super::{ChatServer, ClientPacket};
 use crate::auth::UserInfo;
-use crate::chat::{InternalId, User, SuccessReason};
+use crate::chat::{InternalId, SuccessReason, User};
 
 use crate::error::*;
 use log::*;

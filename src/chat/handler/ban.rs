@@ -44,9 +44,7 @@ impl ChatServer {
                         info!("User `{}` unbanned.", receiver);
                         SuccessReason::Unban
                     };
-                    let _ = session.addr.do_send(ClientPacket::Success {
-                        reason,
-                    });
+                    let _ = session.addr.do_send(ClientPacket::Success { reason });
                 }
                 Err(Error::AxoChat { source }) => {
                     info!("Could not (un-)ban user `{}`: {}", receiver, source);
