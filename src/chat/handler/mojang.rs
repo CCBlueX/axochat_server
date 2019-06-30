@@ -139,7 +139,7 @@ impl ChatServer {
                             }
                             fut::ok(())
                         })
-                        .wait(ctx);
+                        .spawn(ctx);
                 }
                 Err(err) => send_login_failed(user_id, err, &session.addr, ctx),
             }

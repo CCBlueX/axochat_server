@@ -38,7 +38,7 @@ impl Actor for Session {
                 }
                 fut::ok(())
             })
-            .wait(ctx)
+            .spawn(ctx)
     }
 
     fn stopping(&mut self, _ctx: &mut Self::Context) -> Running {
@@ -64,7 +64,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
                     .map_err(|err, _actor, _ctx| {
                         warn!("Could not decode packet: {}", err);
                     })
-                    .wait(ctx),
+                    .spawn(ctx),
                 Err(err) => {
                     warn!("Could not decode packet: {}", err);
                 }
