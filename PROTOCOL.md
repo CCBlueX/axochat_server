@@ -96,7 +96,7 @@ Client Packets are received by the client.
 This packet may be sent at any time,
 but is usually a response to a failed action of the client.
 
-#### Example
+**Example**
 ```json
 {
     "m": "Error",
@@ -114,7 +114,7 @@ if another client successfully [sent a message](#message-1) to the server.
 - `author_info` is optional and described in detail in [UserInfo](#userinfo).
 - `content` is any message fitting the validation scheme of the server.
 
-#### Example
+**Example**
 ```json
 {
     "m": "Message",
@@ -137,7 +137,7 @@ A session hash is synonymous with a *server id* in the context of
 The client has to send a [LoginMojang](#loginmojang) packet to the server
 after authenticating itself with mojang.
 
-#### Example
+**Example**
 ```json
 {
     "m": "MojangInfo",
@@ -152,7 +152,7 @@ After the client sent the server a [RequestJWT](#requestjwt)
 packet, the server will provide the client with json web token.
 This token can be used in the [LoginJWT](#loginjwt) packet.
 
-#### Example
+**Example**
 ```json
 {
     "m": "NewJWT",
@@ -171,7 +171,7 @@ to the server with the [id](#id).
 - `author_info` is optional and described in detail in [UserInfo](#userinfo).
 - `content` is any message fitting the validation scheme of the server.
 
-#### Example
+**Example**
 ```json
 {
     "m": "PrivateMessage",
@@ -192,7 +192,7 @@ This packet is sent after either
 [BanUser](#banuser) or [UnbanUser](#unbanuser)
 were processed successfully.
 
-#### Example
+**Example**
 ```json
 {
     "m": "Success"
@@ -207,7 +207,7 @@ A client can send this packet to ban other users from using this chat.
 
 - `user` is an [Id](#id).
 
-#### Example
+**Example**
 ```json
 {
     "m": "BanUser",
@@ -227,7 +227,7 @@ it will send [Success](#success) if the login was successful.
 - If `allow_messages` is true, other clients may send private messages
   to this client.
 
-#### Example
+**Example**
 ```json
 {
     "m": "LoginJWT",
@@ -252,7 +252,7 @@ it will send [Success](#success) if the login was successful.
 - If `allow_messages` is true, other clients may send private messages
   to this client.
 
-#### Example
+**Example**
 ```json
 {
     "m": "RequestMojangInfo",
@@ -271,7 +271,7 @@ it will send [Success](#success) if the login was successful.
 The `content` of this packet will be sent to every client
 as [Message](#message) if it fits the validation scheme.
 
-#### Example
+**Example**
 ```json
 {
     "m": "Message",
@@ -287,7 +287,7 @@ as [PrivateMessage](#privatemessage) if it fits the validation scheme.
 
 - `receiver` is an [Id](#id).
 
-#### Example
+**Example**
 ```json
 {
     "m": "PrivateMessage",
@@ -306,7 +306,7 @@ The server will send a [NewJWT](#newjwt) packet to the client.
 
 This packet has no body.
 
-#### Example
+**Example**
 ```json
 {
     "m": "RequestJWT"
@@ -319,7 +319,7 @@ The server will then send a [MojangInfo](#mojanginfo) to the client.
 
 This packet has no body.
 
-#### Example
+**Example**
 ```json
 {
     "m": "RequestMojangInfo"
@@ -331,7 +331,7 @@ A client can send this packet to unban other users.
 
 - `user` is an [Id](#id).
 
-#### Example
+**Example**
 ```json
 {
     "m": "UnbanUser",
