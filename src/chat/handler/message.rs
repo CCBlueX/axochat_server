@@ -89,14 +89,15 @@ impl ChatServer {
                 }
                 _ => {}
             }
-
-            sender_session
-                .addr
-                .do_send(ClientPacket::Error {
-                    message: ClientError::PrivateMessageNotAccepted,
-                })
-                .ok();
         }
+
+        let _ = self.connections
+            .get_mut(&user_id)
+            .expect("could not find connection")
+            .addr
+            .do_send(ClientPacket::Error {
+                message: ClientError::PrivateMessageNotAccepted,
+            });
     }
 
     fn basic_check(&self, user_id: InternalId, content: &str) -> Option<&SessionState> {
