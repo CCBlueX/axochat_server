@@ -26,7 +26,11 @@ pub fn chat_route(
     stream: web::Payload,
     srv: web::Data<Addr<ChatServer>>,
 ) -> actix_web::Result<HttpResponse> {
-    ws::start(session::Session::new(InternalId::new(0), srv.get_ref().clone()), &req, stream)
+    ws::start(
+        session::Session::new(InternalId::new(0), srv.get_ref().clone()),
+        &req,
+        stream,
+    )
 }
 
 #[derive(Clone)]

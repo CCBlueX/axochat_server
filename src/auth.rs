@@ -36,7 +36,11 @@ pub fn authenticate(
                 Err(ClientError::LoginFailed.into())
             }
         })
-        .and_then(|mut response| response.json().map_err(|err| Error::Actix { source: err.into() })))
+        .and_then(|mut response| {
+            response
+                .json()
+                .map_err(|err| Error::Actix { source: err.into() })
+        }))
 }
 
 #[derive(Debug, Deserialize)]

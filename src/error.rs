@@ -1,6 +1,6 @@
 use derive_more::From;
-use snafu::Snafu;
 use serde::Serialize;
+use snafu::Snafu;
 use std::{error, fmt, io};
 
 pub type Result<T> = std::result::Result<T, Error>;
