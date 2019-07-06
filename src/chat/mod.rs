@@ -54,8 +54,7 @@ impl ChatServer {
             ids: HashMap::new(),
 
             rng: {
-                let os_rng = OsRng::new().expect("could not initialize os rng");
-                Hc128Rng::from_rng(os_rng).expect("could not initialize hc128 rng")
+                Hc128Rng::from_rng(OsRng).expect("could not initialize hc128 rng")
             },
             authenticator: config
                 .auth
