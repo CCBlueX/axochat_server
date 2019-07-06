@@ -79,7 +79,12 @@ impl Handler<Disconnect> for ChatServer {
         info!("User `{}` disconnected.", msg.id);
         if let Some(session) = self.connections.remove(&msg.id) {
             if let Some(info) = session.user {
-                self.ids.remove(&info.name.as_str().into());
+                let id = info.name.as_str().into();
+                let ids = self.ids.get_mut(&id).expect("the ids should still exist here");
+                ids.remove(&msg.id);
+                if ids.is_empty() {
+                    self.ids.remove(&id);
+                }
             }
         }
     }
