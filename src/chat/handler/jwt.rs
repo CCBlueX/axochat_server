@@ -66,7 +66,7 @@ impl ChatServer {
         if let Some(auth) = &self.authenticator {
             match auth.auth(jwt) {
                 Ok(info) => {
-                    self.ids.insert(info.name.as_str().into(), user_id);
+                    self.ids.entry(info.name.as_str().into()).or_default().insert(user_id);
                     session.user = Some(User {
                         name: info.name,
                         uuid: info.uuid,

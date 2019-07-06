@@ -53,8 +53,8 @@ impl ChatServer {
         }
 
         if let Some(sender_session) = self.basic_check(user_id, &content) {
-            let receiver_session = match self.connection_by_id(&receiver) {
-                Some(ses) => ses,
+            let receiver_ids = match self.ids.get(&receiver) {
+                Some(ids) => ids,
                 None => {
                     debug!(
                         "User `{}` tried to write to non-existing user `{}`.",
@@ -64,30 +64,32 @@ impl ChatServer {
                 }
             };
 
-            match &receiver_session.user {
-                Some(info) if info.allow_messages => {
-                    let sender_info = sender_session.user.as_ref().unwrap();
-                    let author_id = sender_info.name.as_str().into();
+            for receiver_session in receiver_ids.iter().filter_map(|id| self.connections.get(id)) {
+                match &receiver_session.user {
+                    Some(info) if info.allow_messages => {
+                        let sender_info = sender_session.user.as_ref().unwrap();
+                        let author_id = sender_info.name.as_str().into();
 
-                    let client_packet = ClientPacket::PrivateMessage {
-                        author_id,
-                        author_info: Some(UserInfo {
-                            name: sender_info.name.clone(),
-                            uuid: sender_info.uuid,
-                        }),
-                        content,
-                    };
-                    info!(
-                        "User `{}` has written to `{}` privately.",
-                        user_id, receiver
-                    );
-                    if let Err(err) = receiver_session.addr.do_send(client_packet) {
-                        warn!("Could not send private message to client: {}", err);
-                    } else {
-                        return;
+                        let client_packet = ClientPacket::PrivateMessage {
+                            author_id,
+                            author_info: Some(UserInfo {
+                                name: sender_info.name.clone(),
+                                uuid: sender_info.uuid,
+                            }),
+                            content: content.clone(),
+                        };
+                        info!(
+                            "User `{}` has written to `{}` privately.",
+                            user_id, receiver
+                        );
+                        if let Err(err) = receiver_session.addr.do_send(client_packet) {
+                            warn!("Could not send private message to client: {}", err);
+                        } else {
+                            return;
+                        }
                     }
+                    _ => {}
                 }
-                _ => {}
             }
         }
 

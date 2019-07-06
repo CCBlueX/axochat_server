@@ -66,18 +66,6 @@ impl ChatServer {
                 })
                 .ok();
             return;
-        } else if self.ids.contains_key(&info.name.as_str().into()) {
-            info!(
-                "User `{}` is already logged in as `{}`.",
-                user_id, info.name
-            );
-            session
-                .addr
-                .do_send(ClientPacket::Error {
-                    message: ClientError::AlreadyLoggedIn,
-                })
-                .ok();
-            return;
         }
 
         if let Some(session_hash) = &session.session_hash {
@@ -97,7 +85,7 @@ impl ChatServer {
                                     );
 
                                     if let Some(session) = actor.connections.get_mut(&user_id) {
-                                        actor.ids.insert(info.name.as_str().into(), user_id);
+                                        actor.ids.entry(info.name.as_str().into()).or_default().insert(user_id);
                                         session.user = Some(info);
 
                                         if let Err(err) =

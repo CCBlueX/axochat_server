@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::auth::{Authenticator, UserInfo};
 use crate::message::{MessageValidator, RateLimiter};
 use crate::moderation::Moderation;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use rand::{rngs::OsRng, SeedableRng};
 use rand_hc::Hc128Rng;
 use uuid::Uuid;
@@ -36,7 +36,7 @@ pub fn chat_route(
 
 pub struct ChatServer {
     connections: HashMap<InternalId, SessionState>,
-    ids: HashMap<Id, InternalId>,
+    ids: HashMap<Id, HashSet<InternalId>>,
 
     rng: rand_hc::Hc128Rng,
     authenticator: Option<Authenticator>,
@@ -68,11 +68,6 @@ impl ChatServer {
 
             current_internal_user_id: 0,
         }
-    }
-
-    pub(self) fn connection_by_id(&self, id: &Id) -> Option<&SessionState> {
-        let internal_id = self.ids.get(id)?;
-        self.connections.get(&internal_id)
     }
 }
 
