@@ -1,6 +1,6 @@
 use crate::config::ModConfig;
 use crate::error::*;
-use hashbrown::HashSet;
+use std::collections::HashSet;
 use std::{
     fs::{File, OpenOptions},
     io::{BufRead, BufReader, BufWriter, Write},

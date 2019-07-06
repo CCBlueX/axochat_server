@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::auth::{Authenticator, UserInfo};
 use crate::message::{MessageValidator, RateLimiter};
 use crate::moderation::Moderation;
-use hashbrown::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use rand::{rngs::OsRng, SeedableRng};
 use rand_hc::Hc128Rng;
 use uuid::Uuid;
