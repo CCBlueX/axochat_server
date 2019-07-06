@@ -85,7 +85,11 @@ impl ChatServer {
                                     );
 
                                     if let Some(session) = actor.connections.get_mut(&user_id) {
-                                        actor.ids.entry(info.name.as_str().into()).or_default().insert(user_id);
+                                        actor
+                                            .ids
+                                            .entry(info.name.as_str().into())
+                                            .or_default()
+                                            .insert(user_id);
                                         session.user = Some(info);
 
                                         if let Err(err) =

@@ -64,7 +64,10 @@ impl ChatServer {
                 }
             };
 
-            for receiver_session in receiver_ids.iter().filter_map(|id| self.connections.get(id)) {
+            for receiver_session in receiver_ids
+                .iter()
+                .filter_map(|id| self.connections.get(id))
+            {
                 match &receiver_session.user {
                     Some(info) if info.allow_messages => {
                         let sender_info = sender_session.user.as_ref().unwrap();

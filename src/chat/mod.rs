@@ -17,9 +17,9 @@ use serde::{Deserialize, Serialize};
 use crate::auth::{Authenticator, UserInfo};
 use crate::message::{MessageValidator, RateLimiter};
 use crate::moderation::Moderation;
-use std::collections::{HashMap, HashSet};
 use rand::{rngs::OsRng, SeedableRng};
 use rand_hc::Hc128Rng;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 pub fn chat_route(
@@ -53,9 +53,7 @@ impl ChatServer {
             connections: HashMap::new(),
             ids: HashMap::new(),
 
-            rng: {
-                Hc128Rng::from_rng(OsRng).expect("could not initialize hc128 rng")
-            },
+            rng: Hc128Rng::from_rng(OsRng).expect("could not initialize hc128 rng"),
             authenticator: config
                 .auth
                 .as_ref()
