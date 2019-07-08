@@ -1,4 +1,5 @@
 mod ban;
+mod count;
 mod jwt;
 mod message;
 mod mojang;
@@ -40,6 +41,9 @@ impl Handler<ServerPacketId> for ChatServer {
             }
             ServerPacket::UnbanUser { user } => {
                 self.unban_user(user_id, &user);
+            }
+            ServerPacket::RequestUserCount => {
+                self.send_user_count(user_id);
             }
         }
     }

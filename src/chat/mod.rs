@@ -80,7 +80,10 @@ impl Handler<Disconnect> for ChatServer {
         if let Some(session) = self.connections.remove(&msg.id) {
             if let Some(info) = session.user {
                 let id = info.name.as_str().into();
-                let ids = self.ids.get_mut(&id).expect("the ids should still exist here");
+                let ids = self
+                    .ids
+                    .get_mut(&id)
+                    .expect("the ids should still exist here");
                 ids.remove(&msg.id);
                 if ids.is_empty() {
                     self.ids.remove(&id);
@@ -128,6 +131,10 @@ enum ClientPacket {
         author_info: Option<UserInfo>,
         content: String,
     },
+    UserCount {
+        connections: u32,
+        logged_in: u32,
+    },
     Success {
         reason: SuccessReason,
     },
@@ -148,6 +155,7 @@ enum ServerPacket {
     PrivateMessage { receiver: Id, content: String },
     BanUser { user: Uuid },
     UnbanUser { user: Uuid },
+    RequestUserCount,
 }
 
 #[derive(Message)]

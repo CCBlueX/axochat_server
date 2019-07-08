@@ -17,6 +17,7 @@ All packets are sent to the `/ws` endpoint.
         - [NewJWT](#newjwt)
         - [PrivateMessage](#privatemessage)
         - [Success](#success)
+        - [UserCount](#usercount)
     - [Server](#server)
         - [BanUser](#banuser)
         - [LoginJWT](#loginjwt)
@@ -25,6 +26,7 @@ All packets are sent to the `/ws` endpoint.
         - [PrivateMessage](#privatemessage-1)
         - [RequestJWT](#requestjwt)
         - [RequestMojangInfo](#requestmojanginfo)
+        - [RequestUserCount](#requestusercount)
         - [UnbanUser](#unbanuser)
 
 <!-- markdown-toc end -->
@@ -191,6 +193,23 @@ were processed successfully.
 }
 ```
 
+### UserCount
+This packet is sent after [RequestUserCount](#requestusercount) was received.
+
+- `connections` is the amount of connections this server has open
+- `logged_in` is the amount of authenticated connections this server has open
+
+**Example**
+```json
+{
+    "m": "UserCount",
+    "c": {
+        "connections": 623,
+        "logged_in": 531,
+    }
+}
+```
+
 ## Server
 Server Packets are received by the server.
 
@@ -309,6 +328,19 @@ This packet has no body.
 ```json
 {
     "m": "RequestMojangInfo"
+}
+```
+
+### RequestUserCount
+After receiving this packet, the server will then send a [UserCount](#usercount)
+packet to the client.
+
+This packet has no body.
+
+**Example**
+```json
+{
+    "m": "RequestUserCount"
 }
 ```
 
