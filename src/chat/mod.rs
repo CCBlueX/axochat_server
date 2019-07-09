@@ -127,12 +127,12 @@ enum ClientPacket {
     },
     Message {
         author_id: Id,
-        author_info: Option<UserInfo>,
+        author_info: UserInfo,
         content: String,
     },
     PrivateMessage {
         author_id: Id,
-        author_info: Option<UserInfo>,
+        author_info: UserInfo,
         content: String,
     },
     UserCount {

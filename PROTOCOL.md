@@ -96,7 +96,7 @@ This packet will be sent to every authenticated client,
 if another client successfully [sent a message](#message-1) to the server.
 
 - `author_id` is an [Id](#id).
-- `author_info` is optional and described in detail in [UserInfo](#userinfo).
+- `author_info` is described in detail in [UserInfo](#userinfo).
 - `content` is any message fitting the validation scheme of the server.
 
 **Example**
@@ -153,7 +153,7 @@ if another client successfully [sent a private message](#privatemessage-1)
 to the server with the [id](#id).
 
 - `author_id` is an [Id](#id).
-- `author_info` is optional and described in detail in [UserInfo](#userinfo).
+- `author_info` is described in detail in [UserInfo](#userinfo).
 - `content` is any message fitting the validation scheme of the server.
 
 **Example**

@@ -23,10 +23,10 @@ impl ChatServer {
             info!("User `{}` has written `{}`.", user_id, content);
             let client_packet = ClientPacket::Message {
                 author_id,
-                author_info: Some(UserInfo {
+                author_info: UserInfo {
                     name: info.name.clone(),
                     uuid: info.uuid,
-                }),
+                },
                 content,
             };
             for session in self.connections.values() {
@@ -72,10 +72,10 @@ impl ChatServer {
 
                         let client_packet = ClientPacket::PrivateMessage {
                             author_id,
-                            author_info: Some(UserInfo {
+                            author_info: UserInfo {
                                 name: sender_info.name.clone(),
                                 uuid: sender_info.uuid,
-                            }),
+                            },
                             content: content.clone(),
                         };
                         info!(
