@@ -89,7 +89,7 @@ impl ChatServer {
                                     if let Some(session) = actor.connections.get_mut(&user_id) {
                                         actor
                                             .users
-                                            .entry(info.name.as_str().into())
+                                            .entry(info.name.clone())
                                             .or_insert(UserSession {
                                                 rate_limiter: RateLimiter::new(
                                                     actor.config.message.clone(),

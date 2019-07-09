@@ -4,7 +4,7 @@ mod jwt;
 mod message;
 mod mojang;
 
-use super::{ChatServer, ClientPacket, Id, ServerPacket, ServerPacketId};
+use super::{ChatServer, ClientPacket, ServerPacket, ServerPacketId};
 
 use actix::*;
 

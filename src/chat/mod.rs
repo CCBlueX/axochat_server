@@ -36,7 +36,7 @@ pub fn chat_route(
 
 pub struct ChatServer {
     connections: HashMap<InternalId, SessionState>,
-    users: HashMap<Id, UserSession>,
+    users: HashMap<String, UserSession>,
 
     rng: rand_hc::Hc128Rng,
     authenticator: Option<Authenticator>,
@@ -79,14 +79,13 @@ impl Handler<Disconnect> for ChatServer {
         info!("User `{}` disconnected.", msg.id);
         if let Some(session) = self.connections.remove(&msg.id) {
             if let Some(info) = session.user {
-                let id = info.name.as_str().into();
                 let user_session = self
                     .users
-                    .get_mut(&id)
+                    .get_mut(&info.name)
                     .expect("the ids should still exist here");
                 user_session.connections.remove(&msg.id);
                 if user_session.connections.is_empty() {
-                    self.users.remove(&id);
+                    self.users.remove(&info.name);
                 }
             }
         }
@@ -126,12 +125,10 @@ enum ClientPacket {
         token: String,
     },
     Message {
-        author_id: Id,
         author_info: UserInfo,
         content: String,
     },
     PrivateMessage {
-        author_id: Id,
         author_info: UserInfo,
         content: String,
     },
@@ -156,7 +153,7 @@ enum ServerPacket {
     LoginJWT { token: String, allow_messages: bool },
     RequestJWT,
     Message { content: String },
-    PrivateMessage { receiver: Id, content: String },
+    PrivateMessage { receiver: String, content: String },
     BanUser { user: Uuid },
     UnbanUser { user: Uuid },
     RequestUserCount,

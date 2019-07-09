@@ -31,29 +31,6 @@ All packets are sent to the `/ws` endpoint.
 
 <!-- markdown-toc end -->
 
-# Structures
-Some structures are used multiple times; these are described here.
-
-## Id
-An `Id` is a SHA256 hashed username.
-It is encoded as a hex string.
-
-### Example
-```json
-"14233838f75ace1c6cc2a9d39c18e02157b84282124708edfead45dd9bb62621"
-```
-
-## UserInfo
-`UserInfo` is just the `name` and `uuid` of a user.
-
-### Example
-```json
-{
-    "name": "Notch",
-    "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5"
-}
-```
-
 # Packets
 Packets are sent in websocket `text` messages encoded as JSON objects.
 They all have a structure like that, with `c` being optional:
@@ -95,8 +72,7 @@ but is usually a response to a failed action of the client.
 This packet will be sent to every authenticated client,
 if another client successfully [sent a message](#message-1) to the server.
 
-- `author_id` is an [Id](#id).
-- `author_info` is described in detail in [UserInfo](#userinfo).
+- `author_info` is just the name and uuid of the user that sent the message.
 - `content` is any message fitting the validation scheme of the server.
 
 **Example**
@@ -104,7 +80,6 @@ if another client successfully [sent a message](#message-1) to the server.
 {
     "m": "Message",
     "c": {
-        "author_id": "14233838f75ace1c6cc2a9d39c18e02157b84282124708edfead45dd9bb62621",
         "author_info": {
             "name": "Notch",
             "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5"
@@ -148,12 +123,10 @@ This token can be used in the [LoginJWT](#loginjwt) packet.
 ```
 
 ### PrivateMessage
-This packet will be sent to a authenticated client with `allow_messages` turned on,
-if another client successfully [sent a private message](#privatemessage-1)
-to the server with the [id](#id).
+The content of this packet will be sent to a authenticated client with `allow_messages` turned on,
+if another client successfully [sent a private message](#privatemessage-1).
 
-- `author_id` is an [Id](#id).
-- `author_info` is described in detail in [UserInfo](#userinfo).
+- `author_info` is just the name and uuid of the user that sent the message.
 - `content` is any message fitting the validation scheme of the server.
 
 **Example**
@@ -161,7 +134,6 @@ to the server with the [id](#id).
 {
     "m": "PrivateMessage",
     "c": {
-        "author_id": "14233838f75ace1c6cc2a9d39c18e02157b84282124708edfead45dd9bb62621",
         "author_info": {
             "name": "Notch",
             "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5"
@@ -216,7 +188,7 @@ Server Packets are received by the server.
 ### BanUser
 A client can send this packet to ban other users from using this chat.
 
-- `user` is an [Id](#id).
+- `user` is the uuid of the user to ban.
 
 **Example**
 ```json
@@ -290,15 +262,15 @@ as [Message](#message) if it fits the validation scheme.
 The `content` of this packet will be sent to the specified client
 as [PrivateMessage](#privatemessage) if it fits the validation scheme.
 
-- `receiver` is an [Id](#id).
+- `receiver` is the name of the receiver.
 
 **Example**
 ```json
 {
     "m": "PrivateMessage",
     "c": {
-        "content": "Hello, User!",
-        "receiver": "7954cfd733c9abcba682565195b1f8215b07f74fb180923ad156ff73821cb3f2"
+        "content": "Hello, Notch!",
+        "receiver": "Notch"
     }
 }
 ```
@@ -347,7 +319,7 @@ This packet has no body.
 ### UnbanUser
 A client can send this packet to unban other users.
 
-- `user` is an [Id](#id).
+- `user` is the uuid of the user to unban.
 
 **Example**
 ```json

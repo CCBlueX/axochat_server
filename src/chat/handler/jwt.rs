@@ -69,7 +69,7 @@ impl ChatServer {
             match auth.auth(jwt) {
                 Ok(info) => {
                     self.users
-                        .entry(info.name.as_str().into())
+                        .entry(info.name.clone())
                         .or_insert(UserSession {
                             rate_limiter: RateLimiter::new(self.config.message.clone()),
                             connections: HashSet::new(),
