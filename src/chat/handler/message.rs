@@ -7,15 +7,15 @@ use log::*;
 
 impl ChatServer {
     pub(super) fn handle_message(&mut self, user_id: InternalId, content: String) {
+        if self.check_ratelimit(user_id) {
+            return;
+        }
+
         if self.basic_check(user_id, &content).is_some() {
             let session = self
                 .connections
                 .get_mut(&user_id)
                 .expect("could not find connection");
-
-            if check_ratelimit(user_id, session) {
-                return;
-            }
 
             let info = session.user.as_ref().unwrap();
             let author_id = info.name.as_str().into();
@@ -43,18 +43,15 @@ impl ChatServer {
         receiver: Id,
         content: String,
     ) {
-        let sender_session = self
-            .connections
-            .get_mut(&user_id)
-            .expect("could not find connection");
-
-        if check_ratelimit(user_id, sender_session) {
+        if self.check_ratelimit(user_id) {
             return;
         }
 
         if let Some(sender_session) = self.basic_check(user_id, &content) {
-            let receiver_ids = match self.ids.get(&receiver) {
-                Some(ids) => ids,
+            let sender_info = sender_session.user.as_ref().unwrap();
+
+            let receiver_user = match self.users.get(&receiver) {
+                Some(user) => user,
                 None => {
                     debug!(
                         "User `{}` tried to write to non-existing user `{}`.",
@@ -64,13 +61,13 @@ impl ChatServer {
                 }
             };
 
-            for receiver_session in receiver_ids
+            for receiver_session in receiver_user
+                .connections
                 .iter()
                 .filter_map(|id| self.connections.get(id))
             {
                 match &receiver_session.user {
                     Some(info) if info.allow_messages => {
-                        let sender_info = sender_session.user.as_ref().unwrap();
                         let author_id = sender_info.name.as_str().into();
 
                         let client_packet = ClientPacket::PrivateMessage {
@@ -148,22 +145,29 @@ impl ChatServer {
             None
         }
     }
-}
 
-fn check_ratelimit(user_id: InternalId, session: &mut SessionState) -> bool {
-    if session.rate_limiter.check_new_message() {
-        info!(
-            "User `{}` tried to send message, but was rate limited.",
-            user_id
-        );
-        session
-            .addr
-            .do_send(ClientPacket::Error {
-                message: ClientError::RateLimited,
-            })
-            .ok();
-        true
-    } else {
-        false
+    fn check_ratelimit(&mut self, user_id: InternalId) -> bool {
+        let session = self
+            .connections
+            .get(&user_id)
+            .expect("could not find connection");
+
+        let id = &session.user.as_ref().unwrap().name.as_str().into();
+        let user = self.users.get_mut(id).unwrap();
+        if user.rate_limiter.check_new_message() {
+            info!(
+                "User `{}` tried to send message, but was rate limited.",
+                user_id
+            );
+            session
+                .addr
+                .do_send(ClientPacket::Error {
+                    message: ClientError::RateLimited,
+                })
+                .ok();
+            true
+        } else {
+            false
+        }
     }
 }

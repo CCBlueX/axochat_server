@@ -1,9 +1,11 @@
-use super::{ChatServer, ClientPacket};
-use crate::auth::UserInfo;
-use crate::chat::{InternalId, SuccessReason, User};
-
 use crate::error::*;
 use log::*;
+
+use super::{ChatServer, ClientPacket};
+use crate::auth::UserInfo;
+use crate::chat::{InternalId, SuccessReason, User, UserSession};
+use crate::message::RateLimiter;
+use std::collections::HashSet;
 
 impl ChatServer {
     pub(super) fn handle_request_jwt(&mut self, user_id: InternalId) {
@@ -66,10 +68,15 @@ impl ChatServer {
         if let Some(auth) = &self.authenticator {
             match auth.auth(jwt) {
                 Ok(info) => {
-                    self.ids
+                    self.users
                         .entry(info.name.as_str().into())
-                        .or_default()
+                        .or_insert(UserSession {
+                            rate_limiter: RateLimiter::new(self.config.message.clone()),
+                            connections: HashSet::new(),
+                        })
+                        .connections
                         .insert(user_id);
+
                     session.user = Some(User {
                         name: info.name,
                         uuid: info.uuid,

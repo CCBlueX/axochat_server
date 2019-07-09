@@ -1,7 +1,9 @@
-use crate::chat::{ChatServer, ClientPacket, InternalId, SuccessReason, User};
-
 use crate::error::*;
 use log::*;
+
+use crate::chat::{ChatServer, ClientPacket, InternalId, SuccessReason, User, UserSession};
+use crate::message::RateLimiter;
+use std::collections::HashSet;
 
 use crate::auth::authenticate;
 use actix::*;
@@ -86,10 +88,17 @@ impl ChatServer {
 
                                     if let Some(session) = actor.connections.get_mut(&user_id) {
                                         actor
-                                            .ids
+                                            .users
                                             .entry(info.name.as_str().into())
-                                            .or_default()
+                                            .or_insert(UserSession {
+                                                rate_limiter: RateLimiter::new(
+                                                    actor.config.message.clone(),
+                                                ),
+                                                connections: HashSet::new(),
+                                            })
+                                            .connections
                                             .insert(user_id);
+
                                         session.user = Some(info);
 
                                         if let Err(err) =

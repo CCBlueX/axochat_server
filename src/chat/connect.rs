@@ -3,8 +3,6 @@ use log::*;
 use super::{ChatServer, ClientPacket, InternalId, SessionState};
 use actix::*;
 
-use crate::message::RateLimiter;
-
 #[derive(Message)]
 #[rtype(InternalId)]
 pub(super) struct Connect {
@@ -29,7 +27,6 @@ impl Handler<Connect> for ChatServer {
                 addr: msg.addr.clone(),
                 session_hash: None,
                 user: None,
-                rate_limiter: RateLimiter::new(self.config.message.clone()),
             },
         );
         debug!("User `{}` joined the chat.", id);

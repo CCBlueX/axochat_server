@@ -36,7 +36,7 @@ pub fn chat_route(
 
 pub struct ChatServer {
     connections: HashMap<InternalId, SessionState>,
-    ids: HashMap<Id, HashSet<InternalId>>,
+    users: HashMap<Id, UserSession>,
 
     rng: rand_hc::Hc128Rng,
     authenticator: Option<Authenticator>,
@@ -51,7 +51,7 @@ impl ChatServer {
     pub fn new(config: Config) -> ChatServer {
         ChatServer {
             connections: HashMap::new(),
-            ids: HashMap::new(),
+            users: HashMap::new(),
 
             rng: Hc128Rng::from_rng(OsRng).expect("could not initialize hc128 rng"),
             authenticator: config
@@ -80,13 +80,13 @@ impl Handler<Disconnect> for ChatServer {
         if let Some(session) = self.connections.remove(&msg.id) {
             if let Some(info) = session.user {
                 let id = info.name.as_str().into();
-                let ids = self
-                    .ids
+                let user_session = self
+                    .users
                     .get_mut(&id)
                     .expect("the ids should still exist here");
-                ids.remove(&msg.id);
-                if ids.is_empty() {
-                    self.ids.remove(&id);
+                user_session.connections.remove(&msg.id);
+                if user_session.connections.is_empty() {
+                    self.users.remove(&id);
                 }
             }
         }
@@ -96,7 +96,6 @@ impl Handler<Disconnect> for ChatServer {
 pub(self) struct SessionState {
     addr: Recipient<ClientPacket>,
     session_hash: Option<String>,
-    rate_limiter: RateLimiter,
     user: Option<User>,
 }
 
@@ -104,6 +103,11 @@ impl SessionState {
     pub fn is_logged_in(&self) -> bool {
         self.user.is_some()
     }
+}
+
+struct UserSession {
+    rate_limiter: RateLimiter,
+    connections: HashSet<InternalId>,
 }
 
 #[derive(Message)]
