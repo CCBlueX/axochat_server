@@ -263,7 +263,7 @@ it will send [Success](#success) if the login was successful.
 **Example**
 ```json
 {
-    "m": "RequestMojangInfo",
+    "m": "LoginMojang",
     "c": {
         "name": "Notch",
         "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5",
