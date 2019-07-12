@@ -147,19 +147,23 @@ impl ChatServer {
             .get(&user_id)
             .expect("could not find connection");
 
-        let user = self.users.get_mut(&session.user.as_ref().unwrap().name).unwrap();
-        if user.rate_limiter.check_new_message() {
-            info!(
-                "User `{}` tried to send message, but was rate limited.",
-                user_id
-            );
-            session
-                .addr
-                .do_send(ClientPacket::Error {
-                    message: ClientError::RateLimited,
-                })
-                .ok();
-            true
+        if let Some(user) = &session.user {
+            let user = self.users.get_mut(&user.name).unwrap();
+            if user.rate_limiter.check_new_message() {
+                info!(
+                    "User `{}` tried to send message, but was rate limited.",
+                    user_id
+                );
+                session
+                    .addr
+                    .do_send(ClientPacket::Error {
+                        message: ClientError::RateLimited,
+                    })
+                    .ok();
+                true
+            } else {
+                false
+            }
         } else {
             false
         }
