@@ -23,7 +23,7 @@ impl ChatServer {
 
             if let Err(err) = session.addr.do_send(ClientPacket::UserCount {
                 connections: self.connections.len() as u32,
-                logged_in: self.users.values().map(|user| user.connections.len() as u32).sum(),
+                logged_in: self.users.len() as u32,
             }) {
                 warn!("Could not send user count to user `{}`: {}", user_id, err);
             }
