@@ -4,7 +4,7 @@ use crate::config::MsgConfig;
 use std::{collections::VecDeque, time::Instant};
 
 pub struct RateLimiter {
-    buf: VecDeque<Instant>,
+    buf: VecDeque<(Instant, String)>,
     cfg: MsgConfig,
 }
 
@@ -18,7 +18,7 @@ impl RateLimiter {
 
     /// Returns if a new message in this instant would be rate limited.
     /// If not, then it registers the new message instant.
-    pub fn check_new_message(&mut self) -> bool {
+    pub fn check_new_message(&mut self, message: String) -> bool {
         let now = Instant::now();
         let limit = now - *self.cfg.count_duration;
 
@@ -26,7 +26,7 @@ impl RateLimiter {
         let last_index = self
             .buf
             .iter()
-            .take_while(|time| *time < &limit)
+            .take_while(|(time, _)| *time < limit)
             .enumerate()
             .map(|(i, _)| i)
             .last()
@@ -34,8 +34,13 @@ impl RateLimiter {
         self.buf.drain(..last_index);
 
         if self.buf.len() < self.cfg.max_messages {
-            self.buf.push_back(now);
-            false
+            let message_found = self.buf.iter().any(|(_, msg)| &message == msg);
+            if message_found {
+                self.buf.push_back((now, message));
+                false
+            } else {
+                true
+            }
         } else {
             true
         }

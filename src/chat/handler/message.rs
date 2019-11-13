@@ -7,7 +7,7 @@ use log::*;
 
 impl ChatServer {
     pub(super) fn handle_message(&mut self, user_id: InternalId, content: String) {
-        if self.check_ratelimit(user_id) {
+        if self.check_ratelimit(user_id, content.clone()) {
             return;
         }
 
@@ -41,7 +41,7 @@ impl ChatServer {
         receiver: String,
         content: String,
     ) {
-        if self.check_ratelimit(user_id) {
+        if self.check_ratelimit(user_id, content.clone()) {
             return;
         }
 
@@ -141,7 +141,7 @@ impl ChatServer {
         }
     }
 
-    fn check_ratelimit(&mut self, user_id: InternalId) -> bool {
+    fn check_ratelimit(&mut self, user_id: InternalId, message: String) -> bool {
         let session = self
             .connections
             .get(&user_id)
@@ -149,7 +149,7 @@ impl ChatServer {
 
         if let Some(user) = &session.user {
             let user = self.users.get_mut(&user.name).unwrap();
-            if user.rate_limiter.check_new_message() {
+            if user.rate_limiter.check_new_message(message) {
                 info!(
                     "User `{}` tried to send message, but was rate limited.",
                     user_id
