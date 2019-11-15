@@ -36,10 +36,10 @@ impl RateLimiter {
         if self.buf.len() < self.cfg.max_messages {
             let message_found = self.buf.iter().any(|(_, msg)| &message == msg);
             if message_found {
+                true
+            } else {
                 self.buf.push_back((now, message));
                 false
-            } else {
-                true
             }
         } else {
             true
