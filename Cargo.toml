@@ -3,6 +3,7 @@ name = "axochat"
 version = "0.10.0"
 authors = ["frozolotl <frozolotl@protonmail.com>"]
 edition = "2018"
+license = "MIT"
 
 [features]
 default = ["ssl"]
