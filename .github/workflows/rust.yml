@@ -28,7 +28,7 @@ jobs:
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build
-        run: cargo build --no-default-features --features native-tls --release
+        run: cargo build --no-default-features --features rust-tls --release
 
       - name: Run tests
         run: cargo test
