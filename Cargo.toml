@@ -30,7 +30,7 @@ rustls = { version = "0.15", optional = true }
 ring = "0.14"
 jsonwebtoken = "6.0"
 actix-web = "1.0"
-actix-web-actors = "1.0"
+actix-web-actors = "2.0"
 actix = "0.8"
 futures = "0.1"
 url = "1.7"
