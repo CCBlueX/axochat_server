@@ -13,7 +13,7 @@ rust-tls = ["rustls", "actix-web/rust-tls"]
 
 [dependencies]
 log = "0.4"
-env_logger = "0.6"
+env_logger = "0.8"
 structopt = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
