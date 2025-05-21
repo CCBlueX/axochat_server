@@ -1,7 +1,5 @@
-use actix::{
-    dev::{MessageResponse, ResponseChannel},
-    *,
-};
+use actix::dev::MessageResponse;
+use actix::*;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -21,14 +19,15 @@ impl fmt::Display for InternalId {
     }
 }
 
+// Updated MessageResponse implementation for Actix 0.13
 impl<A, M> MessageResponse<A, M> for InternalId
 where
     A: Actor,
     M: Message<Result = InternalId>,
 {
-    fn handle<R: ResponseChannel<M>>(self, _: &mut A::Context, tx: Option<R>) {
+    fn handle(self, _: &mut A::Context, tx: Option<actix::dev::OneshotSender<InternalId>>) {
         if let Some(tx) = tx {
-            tx.send(self);
+            let _ = tx.send(self);
         }
     }
 }

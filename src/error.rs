@@ -5,7 +5,8 @@ use std::{error, fmt, io};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Snafu, From)]
+// Removed the From derive to avoid conflicts with manually implemented From traits
+#[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("I/O: {}", source))]
     IO { source: io::Error },
@@ -15,21 +16,71 @@ pub enum Error {
     TOML { source: toml::de::Error },
     #[snafu(display("actix-web: {}", source))]
     Actix { source: actix_web::Error },
-    #[cfg(feature = "ssl")]
+    #[cfg(feature = "openssl-tls")]
     #[snafu(display("OpenSSL: {}", source))]
     OpenSSL { source: openssl::error::ErrorStack },
-    #[cfg(feature = "rust-tls")]
+    #[cfg(feature = "rustls-tls")]
     #[snafu(display("rustls: {}", source))]
-    RustTLS { source: rustls::TLSError },
-    #[cfg(feature = "rust-tls")]
+    RustTLS { source: std::io::Error },
+    #[cfg(feature = "rustls-tls")]
     #[snafu(display("rustls"))]
     RustTLSNoMsg,
     #[snafu(display("JWT: {}", source))]
     JWT { source: jsonwebtoken::errors::Error },
     #[snafu(display("UUID parsing: {}", source))]
-    Uuid { source: uuid::parser::ParseError },
+    Uuid { source: uuid::Error },
     #[snafu(display("axochat: {}", source))]
     AxoChat { source: ClientError },
+}
+
+// Manually implement From traits to avoid conflicts
+impl From<io::Error> for Error {
+    fn from(source: io::Error) -> Self {
+        Error::IO { source }
+    }
+}
+
+impl From<serde_json::error::Error> for Error {
+    fn from(source: serde_json::error::Error) -> Self {
+        Error::JSON { source }
+    }
+}
+
+impl From<toml::de::Error> for Error {
+    fn from(source: toml::de::Error) -> Self {
+        Error::TOML { source }
+    }
+}
+
+impl From<actix_web::Error> for Error {
+    fn from(source: actix_web::Error) -> Self {
+        Error::Actix { source }
+    }
+}
+
+#[cfg(feature = "openssl-tls")]
+impl From<openssl::error::ErrorStack> for Error {
+    fn from(source: openssl::error::ErrorStack) -> Self {
+        Error::OpenSSL { source }
+    }
+}
+
+impl From<jsonwebtoken::errors::Error> for Error {
+    fn from(source: jsonwebtoken::errors::Error) -> Self {
+        Error::JWT { source }
+    }
+}
+
+impl From<uuid::Error> for Error {
+    fn from(source: uuid::Error) -> Self {
+        Error::Uuid { source }
+    }
+}
+
+impl From<ClientError> for Error {
+    fn from(source: ClientError) -> Self {
+        Error::AxoChat { source }
+    }
 }
 
 /// A client-facing error.
