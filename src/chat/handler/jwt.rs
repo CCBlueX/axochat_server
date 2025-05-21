@@ -3,7 +3,7 @@ use log::*;
 
 use super::{ChatServer, ClientPacket};
 use crate::auth::UserInfo;
-use crate::chat::{InternalId, SuccessReason, User, UserSession};
+use crate::chat::{InternalId, SuccessReason, User, UserSession, send_message};
 use crate::message::RateLimiter;
 use std::collections::HashSet;
 
@@ -22,36 +22,41 @@ impl ChatServer {
                     Ok(token) => token,
                     Err(err) => {
                         warn!("Could not create new token for user `{}`: {}", user_id, err);
-                        session
-                            .addr
-                            .do_send(ClientPacket::Error {
+                        send_message(
+                            &session.addr,
+                            ClientPacket::Error {
                                 message: ClientError::Internal,
-                            })
-                            .ok();
+                            },
+                            "jwt creation failed"
+                        );
                         return;
                     }
                 };
 
-                if let Err(err) = session.addr.do_send(ClientPacket::NewJWT { token }) {
-                    warn!("Could not send mojang info to user `{}`: {}", user_id, err);
-                }
+                send_message(
+                    &session.addr, 
+                    ClientPacket::NewJWT { token },
+                    "new jwt"
+                );
             } else {
                 info!("User `{}` tried to get JWT but is not logged in.", user_id);
-                session
-                    .addr
-                    .do_send(ClientPacket::Error {
+                send_message(
+                    &session.addr,
+                    ClientPacket::Error {
                         message: ClientError::NotLoggedIn,
-                    })
-                    .ok();
+                    },
+                    "jwt not logged in"
+                );
             }
         } else {
             info!("User `{}` tried to request not supported JWT", user_id);
-            session
-                .addr
-                .do_send(ClientPacket::Error {
+            send_message(
+                &session.addr,
+                ClientPacket::Error {
                     message: ClientError::NotSupported,
-                })
-                .ok();
+                },
+                "jwt not supported"
+            );
         }
     }
 
@@ -82,30 +87,36 @@ impl ChatServer {
                         uuid: info.uuid,
                         allow_messages,
                     });
-                    if let Err(err) = session.addr.do_send(ClientPacket::Success {
-                        reason: SuccessReason::Login,
-                    }) {
-                        info!("Could not send login success to `{}`: {}", user_id, err);
-                    }
+                    
+                    let addr = &session.addr;
+                    send_message(
+                        addr,
+                        ClientPacket::Success {
+                            reason: SuccessReason::Login,
+                        },
+                        "jwt login success"
+                    );
                 }
                 Err(err) => {
                     info!("Login of user `{}` using JWT failed: {}", user_id, err);
-                    session
-                        .addr
-                        .do_send(ClientPacket::Error {
+                    send_message(
+                        &session.addr,
+                        ClientPacket::Error {
                             message: ClientError::LoginFailed,
-                        })
-                        .ok();
+                        },
+                        "jwt login failed"
+                    );
                 }
             };
         } else {
             info!("User `{}` tried to request not supported JWT", user_id);
-            session
-                .addr
-                .do_send(ClientPacket::Error {
+            send_message(
+                &session.addr,
+                ClientPacket::Error {
                     message: ClientError::NotSupported,
-                })
-                .ok();
+                },
+                "jwt login not supported"
+            );
         }
     }
 }

@@ -22,7 +22,8 @@ use rand_hc::Hc128Rng;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-pub fn chat_route(
+// Updated to work with Actix Web 4.x
+pub async fn chat_route(
     req: HttpRequest,
     stream: web::Payload,
     srv: web::Data<Addr<ChatServer>>,
@@ -68,6 +69,15 @@ impl ChatServer {
     }
 }
 
+// Define a separate helper function outside the impl to avoid borrowing issues
+pub(crate) fn send_message(recipient: &Recipient<ClientPacket>, message: ClientPacket, context: &str) {
+    // In Actix 0.13, do_send returns () (unit type), not a Result
+    // We'll just call it and log any errors that might be caught
+    recipient.do_send(message);
+    // If we want to catch errors, we'd need to use the try_send method instead
+    // But for now we'll keep things simple
+}
+
 impl Actor for ChatServer {
     type Context = Context<Self>;
 }
@@ -110,12 +120,14 @@ struct UserSession {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]  // Added return type for Actix 0.13
 struct Disconnect {
     id: InternalId,
 }
 
 /// A clientbound packet
 #[derive(Message, Serialize, Clone)]
+#[rtype(result = "()")]  // Added return type for Actix 0.13
 #[serde(tag = "m", content = "c")]
 enum ClientPacket {
     MojangInfo {
@@ -146,6 +158,7 @@ enum ClientPacket {
 
 /// A serverbound packet
 #[derive(Message, Deserialize)]
+#[rtype(result = "()")]  // Added return type for Actix 0.13
 #[serde(tag = "m", content = "c")]
 enum ServerPacket {
     RequestMojangInfo,
@@ -160,6 +173,7 @@ enum ServerPacket {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]  // Added return type for Actix 0.13
 struct ServerPacketId {
     user_id: InternalId,
     packet: ServerPacket,

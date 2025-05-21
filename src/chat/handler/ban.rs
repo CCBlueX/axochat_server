@@ -1,5 +1,5 @@
 use super::{ChatServer, ClientPacket};
-use crate::chat::{InternalId, SuccessReason};
+use crate::chat::{InternalId, SuccessReason, send_message};
 
 use crate::error::*;
 use log::*;
@@ -22,12 +22,13 @@ impl ChatServer {
         if let Some(info) = &session.user {
             if !self.moderation.is_moderator(&info.uuid) {
                 info!("`{}` tried to (un-)ban user without permission", user_id);
-                session
-                    .addr
-                    .do_send(ClientPacket::Error {
+                send_message(
+                    &session.addr,
+                    ClientPacket::Error {
                         message: ClientError::NotPermitted,
-                    })
-                    .ok();
+                    },
+                    "permission denied"
+                );
                 return;
             }
 
@@ -45,33 +46,40 @@ impl ChatServer {
                         info!("User `{}` unbanned.", receiver);
                         SuccessReason::Unban
                     };
-                    let _ = session.addr.do_send(ClientPacket::Success { reason });
+                    send_message(
+                        &session.addr, 
+                        ClientPacket::Success { reason },
+                        "ban/unban success"
+                    );
                 }
                 Err(Error::AxoChat { source }) => {
                     info!("Could not (un-)ban user `{}`: {}", receiver, source);
-                    session
-                        .addr
-                        .do_send(ClientPacket::Error { message: source })
-                        .ok();
+                    send_message(
+                        &session.addr,
+                        ClientPacket::Error { message: source },
+                        "ban/unban client error"
+                    );
                 }
                 Err(err) => {
                     info!("Could not (un-)ban user `{}`: {}", receiver, err);
-                    session
-                        .addr
-                        .do_send(ClientPacket::Error {
+                    send_message(
+                        &session.addr,
+                        ClientPacket::Error {
                             message: ClientError::Internal,
-                        })
-                        .ok();
+                        },
+                        "ban/unban internal error"
+                    );
                 }
             }
         } else {
             info!("`{}` is not logged in.", user_id);
-            session
-                .addr
-                .do_send(ClientPacket::Error {
+            send_message(
+                &session.addr,
+                ClientPacket::Error {
                     message: ClientError::NotLoggedIn,
-                })
-                .ok();
+                },
+                "not logged in"
+            );
             return;
         }
     }

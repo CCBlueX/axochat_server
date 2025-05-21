@@ -1,46 +1,47 @@
 use crate::error::*;
 use log::*;
 
-use actix_web::{client::Client, http::StatusCode};
-use futures::Future;
+use reqwest::{self, StatusCode};
 use serde::{de::IgnoredAny, Deserialize, Serialize};
 use url::Url;
 
 use crate::config::AuthConfig;
-use jsonwebtoken::{Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
 use std::{
     fs,
     time::{Duration, SystemTime},
 };
 use uuid::Uuid;
 
-pub fn authenticate(
-    username: &str,
-    server_id: &str,
-) -> Result<impl Future<Item = AuthInfo, Error = Error>> {
+pub async fn authenticate(username: &str, server_id: &str) -> Result<AuthInfo> {
     let mut url =
         Url::parse("https://sessionserver.mojang.com/session/minecraft/hasJoined").unwrap();
     url.query_pairs_mut()
         .append_pair("username", username)
         .append_pair("serverId", server_id);
 
-    Ok(Client::new()
+    let client = reqwest::Client::new();
+    let response = client
         .get(url.as_str())
         .send()
-        .map_err(|err| Error::Actix { source: err.into() })
-        .and_then(|response| {
-            if response.status() == StatusCode::OK {
-                Ok(response)
-            } else {
-                debug!("Login status-code is {}", response.status());
-                Err(ClientError::LoginFailed.into())
-            }
-        })
-        .and_then(|mut response| {
-            response
-                .json()
-                .map_err(|err| Error::Actix { source: err.into() })
-        }))
+        .await
+        .map_err(|err| {
+            debug!("Reqwest error: {:?}", err);
+            Error::IO { source: std::io::Error::new(std::io::ErrorKind::Other, err) }
+        })?;
+
+    if response.status() == StatusCode::OK {
+        response
+            .json::<AuthInfo>()
+            .await
+            .map_err(|err| {
+                debug!("JSON deserialization error: {:?}", err);
+                Error::IO { source: std::io::Error::new(std::io::ErrorKind::Other, err) }
+            })
+    } else {
+        debug!("Login status-code is {}", response.status());
+        Err(ClientError::LoginFailed.into())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,22 +86,26 @@ pub fn encode_sha1_bytes(bytes: &[u8; 20]) -> String {
 pub struct Authenticator {
     validation: Validation,
     header: Header,
-    key: Vec<u8>,
+    encoding_key: EncodingKey,
+    decoding_key: DecodingKey,
     valid_time: Duration,
 }
 
 impl Authenticator {
     pub fn new(cfg: &AuthConfig) -> Result<Authenticator> {
+        let key_data = fs::read(&cfg.key_file)?;
+        
         Ok(Authenticator {
             validation: Validation::new(cfg.algorithm),
             header: Header::new(cfg.algorithm),
-            key: fs::read(&cfg.key_file)?,
+            encoding_key: EncodingKey::from_secret(&key_data),
+            decoding_key: DecodingKey::from_secret(&key_data),
             valid_time: *cfg.valid_time,
         })
     }
 
     pub fn auth(&self, token: &str) -> Result<UserInfo> {
-        match jsonwebtoken::decode::<Claims>(token, &self.key, &self.validation) {
+        match jsonwebtoken::decode::<Claims>(token, &self.decoding_key, &self.validation) {
             Ok(data) => Ok(data.claims.user),
             Err(err) => Err(err.into()),
         }
@@ -111,16 +116,16 @@ impl Authenticator {
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("system time is somehow before the unix epoch");
         let claims = Claims {
-            exp: (unix_time + self.valid_time).as_secs(),
+            exp: (unix_time + self.valid_time).as_secs() as usize,
             user: info,
         };
-        jsonwebtoken::encode(&self.header, &claims, &self.key).map_err(|err| err.into())
+        jsonwebtoken::encode(&self.header, &claims, &self.encoding_key).map_err(|err| err.into())
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    exp: u64,
+    exp: usize,
     user: UserInfo,
 }
 

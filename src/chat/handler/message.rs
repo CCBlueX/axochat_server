@@ -1,6 +1,6 @@
 use super::{ChatServer, ClientPacket};
 use crate::auth::UserInfo;
-use crate::chat::{InternalId, SessionState};
+use crate::chat::{InternalId, SessionState, send_message};
 
 use crate::error::*;
 use log::*;
@@ -28,9 +28,11 @@ impl ChatServer {
                 content,
             };
             for session in self.connections.values() {
-                if let Err(err) = session.addr.do_send(client_packet.clone()) {
-                    warn!("Could not send message to client: {}", err);
-                }
+                send_message(
+                    &session.addr, 
+                    client_packet.clone(),
+                    "broadcast message"
+                );
             }
         }
     }
@@ -77,25 +79,30 @@ impl ChatServer {
                             "User `{}` has written to `{}` privately.",
                             user_id, receiver
                         );
-                        if let Err(err) = receiver_session.addr.do_send(client_packet) {
-                            warn!("Could not send private message to client: {}", err);
-                        } else {
-                            return;
-                        }
+                        send_message(
+                            &receiver_session.addr, 
+                            client_packet,
+                            "private message"
+                        );
+                        return;
                     }
                     _ => {}
                 }
             }
         }
 
-        let _ = self
+        let session = self
             .connections
             .get_mut(&user_id)
-            .expect("could not find connection")
-            .addr
-            .do_send(ClientPacket::Error {
+            .expect("could not find connection");
+
+        send_message(
+            &session.addr,
+            ClientPacket::Error {
                 message: ClientError::PrivateMessageNotAccepted,
-            });
+            },
+            "private message not accepted"
+        );
     }
 
     fn basic_check(&self, user_id: InternalId, content: &str) -> Option<&SessionState> {
@@ -108,22 +115,24 @@ impl ChatServer {
             if let Err(err) = self.validator.validate(content) {
                 info!("User `{}` tried to send invalid message: {}", user_id, err);
                 if let Error::AxoChat { source } = err {
-                    session
-                        .addr
-                        .do_send(ClientPacket::Error { message: source })
-                        .ok();
+                    send_message(
+                        &session.addr,
+                        ClientPacket::Error { message: source },
+                        "message validation failed"
+                    );
                 }
 
                 return None;
             }
             if self.moderation.is_banned(&info.uuid) {
                 info!("User `{}` tried to send message while banned", user_id);
-                session
-                    .addr
-                    .do_send(ClientPacket::Error {
+                send_message(
+                    &session.addr,
+                    ClientPacket::Error {
                         message: ClientError::Banned,
-                    })
-                    .ok();
+                    },
+                    "banned user attempted sending"
+                );
 
                 return None;
             }
@@ -131,12 +140,13 @@ impl ChatServer {
             Some(session)
         } else {
             info!("`{}` is not logged in.", user_id);
-            session
-                .addr
-                .do_send(ClientPacket::Error {
+            send_message(
+                &session.addr,
+                ClientPacket::Error {
                     message: ClientError::NotLoggedIn,
-                })
-                .ok();
+                },
+                "not logged in for messaging"
+            );
             None
         }
     }
@@ -154,12 +164,13 @@ impl ChatServer {
                     "User `{}` tried to send message, but was rate limited.",
                     user_id
                 );
-                session
-                    .addr
-                    .do_send(ClientPacket::Error {
+                send_message(
+                    &session.addr,
+                    ClientPacket::Error {
                         message: ClientError::RateLimited,
-                    })
-                    .ok();
+                    },
+                    "rate limited"
+                );
                 true
             } else {
                 false
