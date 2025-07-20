@@ -77,9 +77,13 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
                     "Connection `{}` closed; code: {:?}, reason: {:?}",
                     self.id, reason.code, reason.description
                 );
+                ctx.close(Some(reason));
+                ctx.stop();
             }
             ws::Message::Close(None) => {
                 info!("Connection `{}` closed.", self.id);
+                ctx.close(None);
+                ctx.stop();
             }
         }
     }
