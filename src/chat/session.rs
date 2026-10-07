@@ -27,7 +27,7 @@ impl Actor for Session {
         let addr = self.addr.clone();
         let recipient = ctx.address().recipient();
         
-        // Use a proper async spawn that avoids borrowing ctx in the async block
+        // wait, not spawn: no frame may be handled before the id is assigned
         ctx.wait(async move {
                 addr.send(Connect::new(recipient)).await
             }
@@ -71,7 +71,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
                 Ok(packet) => {
                     let addr = self.addr.clone();
                     let user_id = self.id;
-                    ctx.wait(async move {
+                    ctx.spawn(async move {
                             addr.send(ServerPacketId {
                                 user_id,
                                 packet,

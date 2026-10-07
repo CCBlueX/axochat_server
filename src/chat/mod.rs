@@ -69,13 +69,15 @@ impl ChatServer {
     }
 }
 
-// Define a separate helper function outside the impl to avoid borrowing issues
-pub(crate) fn send_message(recipient: &Recipient<ClientPacket>, message: ClientPacket, context: &str) {
-    // In Actix 0.13, do_send returns () (unit type), not a Result
-    // We'll just call it and log any errors that might be caught
-    recipient.do_send(message);
-    // If we want to catch errors, we'd need to use the try_send method instead
-    // But for now we'll keep things simple
+// try_send would also fail on a full mailbox; only a closed one is a delivery failure.
+pub(crate) fn send_message(recipient: &Recipient<ClientPacket>, message: ClientPacket, context: &str) -> bool {
+    if recipient.connected() {
+        recipient.do_send(message);
+        true
+    } else {
+        warn!("Could not send {} to user: mailbox closed", context);
+        false
+    }
 }
 
 impl Actor for ChatServer {

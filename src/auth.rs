@@ -9,6 +9,7 @@ use crate::config::AuthConfig;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
 use std::{
     fs,
+    sync::OnceLock,
     time::{Duration, SystemTime},
 };
 use uuid::Uuid;
@@ -20,7 +21,13 @@ pub async fn authenticate(username: &str, server_id: &str) -> Result<AuthInfo> {
         .append_pair("username", username)
         .append_pair("serverId", server_id);
 
-    let client = reqwest::Client::new();
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    let client = CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .expect("could not build http client")
+    });
     let response = client
         .get(url.as_str())
         .send()

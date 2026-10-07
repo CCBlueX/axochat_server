@@ -7,7 +7,7 @@ license = "MIT"
 
 [features]
 default = ["rustls-tls"]
-rustls-tls = ["dep:rustls", "dep:rustls-pemfile", "actix-web/rustls"]
+rustls-tls = ["dep:rustls", "dep:rustls-pemfile", "actix-web/rustls-0_21"]
 openssl-tls = ["dep:openssl", "actix-web/openssl"]
 
 [dependencies]
@@ -42,4 +42,4 @@ openssl = { version = "0.10", features = ["v110"], optional = true }
 
 # URLs
 url = "2.3"
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }

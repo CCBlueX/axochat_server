@@ -14,12 +14,11 @@ use actix::*;
 use actix_web::{web, App, HttpServer};
 use uuid::Uuid;
 
-// Import rustls directly to avoid version conflicts
 #[cfg(feature = "rustls-tls")]
 use {
     std::{fs::File, io::BufReader},
     rustls::{Certificate, PrivateKey, ServerConfig},
-    rustls_pemfile::{certs, pkcs8_private_keys},
+    rustls_pemfile::{certs, read_all, Item},
 };
 
 #[cfg(feature = "openssl-tls")]
@@ -117,27 +116,22 @@ async fn start_server(config: Config) -> Result<()> {
                 .map(Certificate)
                 .collect();
             
-            let mut keys = pkcs8_private_keys(&mut key_file)
-                .map_err(|_| Error::RustTLSNoMsg)?;
-            
-            if keys.is_empty() {
-                return Err(Error::RustTLSNoMsg);
-            }
-            
+            let key = read_all(&mut key_file)?
+                .into_iter()
+                .find_map(|item| match item {
+                    Item::RSAKey(key) | Item::PKCS8Key(key) => Some(PrivateKey(key)),
+                    _ => None,
+                })
+                .ok_or(Error::RustTLSNoMsg)?;
+
             // Build rustls server configuration
             let config = ServerConfig::builder()
                 .with_safe_defaults()
                 .with_no_client_auth()
-                .with_single_cert(cert_chain, PrivateKey(keys.remove(0)))
+                .with_single_cert(cert_chain, key)
                 .map_err(|_| Error::RustTLSNoMsg)?;
-            
-            // Special hack to make rustls versions compatible with actix-web
-            // We use unsafe to cast our ServerConfig to the version expected by actix-web
-            use std::mem;
-            let config_ptr = Box::into_raw(Box::new(config));
-            let actix_rustls_config = unsafe { mem::transmute(config_ptr) };
-            
-            server = server.bind_rustls(address, unsafe { *Box::from_raw(actix_rustls_config) })?;
+
+            server = server.bind_rustls_021(address, config)?;
         }
 
         #[cfg(not(any(feature = "openssl-tls", feature = "rustls-tls")))]

@@ -79,12 +79,13 @@ impl ChatServer {
                             "User `{}` has written to `{}` privately.",
                             user_id, receiver
                         );
-                        send_message(
-                            &receiver_session.addr, 
+                        if send_message(
+                            &receiver_session.addr,
                             client_packet,
                             "private message"
-                        );
-                        return;
+                        ) {
+                            return;
+                        }
                     }
                     _ => {}
                 }
