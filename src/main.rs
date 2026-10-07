@@ -7,8 +7,8 @@ mod moderation;
 
 use config::Config;
 use error::*;
+use clap::Parser;
 use log::*;
-use structopt::*;
 
 use actix::*;
 use actix_web::{web, App, HttpServer};
@@ -23,19 +23,15 @@ use rustls::{
 #[cfg(feature = "openssl-tls")]
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 enum Opt {
     /// Starts the axochat server.
-    #[structopt(name = "start")]
     Start,
     /// Generates a JWT which can be used for logging in.
     /// This should only be used for testing.
     /// If you want to generate JWT for non-testing purposes, send a RequestJWT packet to the server.
-    #[structopt(name = "generate")]
     Generate {
-        #[structopt(name = "name")]
         name: String,
-        #[structopt(name = "uuid")]
         uuid: Option<Uuid>,
     },
 }
@@ -47,7 +43,7 @@ async fn main() -> Result<()> {
     let config = config::read_config()?;
     debug!("Read configuration file: {:?}", config);
 
-    let opt = Opt::from_args();
+    let opt = Opt::parse();
     match opt {
         Opt::Start => start_server(config).await,
         Opt::Generate { name, uuid } => {
