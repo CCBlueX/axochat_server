@@ -8,7 +8,6 @@ use url::Url;
 use crate::config::AuthConfig;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
 use std::{
-    fs,
     sync::OnceLock,
     time::{Duration, SystemTime},
 };
@@ -99,15 +98,14 @@ pub struct Authenticator {
 }
 
 impl Authenticator {
-    pub fn new(cfg: &AuthConfig) -> Result<Authenticator> {
-        let key_data = fs::read(&cfg.key_file)?;
-        
-        Ok(Authenticator {
+    pub fn new(cfg: &AuthConfig) -> Option<Authenticator> {
+        let secret = cfg.secret.as_ref()?.as_bytes();
+        Some(Authenticator {
             validation: Validation::new(cfg.algorithm),
             header: Header::new(cfg.algorithm),
-            encoding_key: EncodingKey::from_secret(&key_data),
-            decoding_key: DecodingKey::from_secret(&key_data),
-            valid_time: *cfg.valid_time,
+            encoding_key: EncodingKey::from_secret(secret),
+            decoding_key: DecodingKey::from_secret(secret),
+            valid_time: cfg.valid_time?,
         })
     }
 

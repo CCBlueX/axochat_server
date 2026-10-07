@@ -1,0 +1,21 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Rust
+/target/
+**/*.rs.bk
+
+# Development
+.env
+.env.*
+*.log
+.claude/
+
+# IDE files
+.idea/
+.vscode/

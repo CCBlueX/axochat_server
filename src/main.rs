@@ -5,9 +5,9 @@ mod error;
 mod message;
 mod moderation;
 
+use clap::{Parser, Subcommand};
 use config::Config;
 use error::*;
-use clap::Parser;
 use log::*;
 
 use actix::*;
@@ -24,7 +24,16 @@ use rustls::{
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 
 #[derive(Parser)]
-enum Opt {
+struct Opt {
+    #[command(flatten)]
+    config: Config,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
     /// Starts the axochat server.
     Start,
     /// Generates a JWT which can be used for logging in.
@@ -40,20 +49,17 @@ enum Opt {
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let config = config::read_config()?;
-    debug!("Read configuration file: {:?}", config);
-
-    let opt = Opt::parse();
-    match opt {
-        Opt::Start => start_server(config).await,
-        Opt::Generate { name, uuid } => {
-            let auth = match config.auth {
-                Some(auth) => auth::Authenticator::new(&auth),
+    let Opt { config, command } = Opt::parse();
+    match command {
+        Command::Start => start_server(config).await,
+        Command::Generate { name, uuid } => {
+            let auth = match auth::Authenticator::new(&config.auth) {
+                Some(auth) => auth,
                 None => {
-                    eprintln!("Please add a `auth` segment to your configuration file.");
-                    Err(ClientError::NotSupported.into())
+                    eprintln!("Set JWT_SECRET to generate tokens.");
+                    return Err(ClientError::NotSupported.into());
                 }
-            }?;
+            };
             let token = auth.new_token(auth::UserInfo {
                 name,
                 uuid: uuid.unwrap_or_else(|| Uuid::from_u128(0)),

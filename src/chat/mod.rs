@@ -54,10 +54,7 @@ impl ChatServer {
             users: HashMap::new(),
 
             rng: Hc128Rng::try_from_rng(&mut SysRng).expect("could not initialize hc128 rng"),
-            authenticator: config
-                .auth
-                .as_ref()
-                .map(|auth| Authenticator::new(&auth).expect("could not initialize authenticator")),
+            authenticator: Authenticator::new(&config.auth),
             validator: MessageValidator::new(config.message.clone()),
             moderation: Moderation::new(config.moderation.clone())
                 .expect("could not start moderation"),

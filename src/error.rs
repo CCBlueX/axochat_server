@@ -10,8 +10,6 @@ pub enum Error {
     IO { source: io::Error },
     #[snafu(display("JSON: {}", source))]
     JSON { source: serde_json::error::Error },
-    #[snafu(display("TOML: {}", source))]
-    TOML { source: toml::de::Error },
     #[snafu(display("actix-web: {}", source))]
     Actix { source: actix_web::Error },
     #[cfg(feature = "openssl-tls")]
@@ -40,12 +38,6 @@ impl From<io::Error> for Error {
 impl From<serde_json::error::Error> for Error {
     fn from(source: serde_json::error::Error) -> Self {
         Error::JSON { source }
-    }
-}
-
-impl From<toml::de::Error> for Error {
-    fn from(source: toml::de::Error) -> Self {
-        Error::TOML { source }
     }
 }
 
