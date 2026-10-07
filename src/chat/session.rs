@@ -87,23 +87,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
             ws::Message::Ping(msg) => self.send(ctx, |mut ws| async move { ws.pong(&msg).await }),
             ws::Message::Pong(_msg) => {}
             ws::Message::Text(msg) => match serde_json::from_slice::<ServerPacket>(msg.as_ref()) {
-                Ok(packet) => {
-                    let addr = self.addr.clone();
-                    let user_id = self.id;
-                    ctx.spawn(async move {
-                            addr.send(ServerPacketId {
-                                user_id,
-                                packet,
-                            }).await
-                        }
-                        .into_actor(self)
-                        .map(|res, _, _| {
-                            if let Err(err) = res {
-                                warn!("Could not deliver packet: {}", err);
-                            }
-                        })
-                    );
-                }
+                // do_send queues right away, so packets reach the server in order
+                Ok(packet) => self.addr.do_send(ServerPacketId {
+                    user_id: self.id,
+                    packet,
+                }),
                 Err(err) => {
                     warn!("Could not decode packet: {}", err);
                 }
