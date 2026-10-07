@@ -121,14 +121,14 @@ struct UserSession {
 }
 
 #[derive(Message)]
-#[rtype(result = "()")]  // Added return type for Actix 0.13
+#[rtype(result = "()")]
 struct Disconnect {
     id: InternalId,
 }
 
 /// A clientbound packet
 #[derive(Message, Serialize, Clone)]
-#[rtype(result = "()")]  // Added return type for Actix 0.13
+#[rtype(result = "()")]
 #[serde(tag = "m", content = "c")]
 enum ClientPacket {
     MojangInfo {
@@ -159,7 +159,7 @@ enum ClientPacket {
 
 /// A serverbound packet
 #[derive(Message, Deserialize)]
-#[rtype(result = "()")]  // Added return type for Actix 0.13
+#[rtype(result = "()")]
 #[serde(tag = "m", content = "c")]
 enum ServerPacket {
     RequestMojangInfo,
@@ -174,7 +174,7 @@ enum ServerPacket {
 }
 
 #[derive(Message)]
-#[rtype(result = "()")]  // Added return type for Actix 0.13
+#[rtype(result = "()")]
 struct ServerPacketId {
     user_id: InternalId,
     packet: ServerPacket,

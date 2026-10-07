@@ -31,7 +31,6 @@ pub enum Error {
     AxoChat { source: ClientError },
 }
 
-// Manually implement From traits to avoid conflicts
 impl From<io::Error> for Error {
     fn from(source: io::Error) -> Self {
         Error::IO { source }

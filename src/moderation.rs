@@ -40,7 +40,6 @@ impl Moderation {
                     .create(true)
                     .open(&self.config.banned)?;
 
-                // Updated to use the new hyphenated method
                 writeln!(file, "{}", user.hyphenated())?;
             }
 

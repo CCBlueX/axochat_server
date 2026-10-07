@@ -23,18 +23,14 @@ rand_hc = "0.5"
 uuid = { version = "1.27", features = ["serde"] }
 snafu = "0.9"
 
-# Updated web framework and related dependencies
 actix-web = { version = "4.15", default-features = false, features = ["macros"] }
 actix-ws = "0.4"
 actix = "0.13"
 
-# Authentication
 jsonwebtoken = { version = "11.1", features = ["aws_lc_rs"] }
 
-# TLS support
 rustls = { version = "0.23", optional = true }
 openssl = { version = "0.10", features = ["v110"], optional = true }
 
-# URLs
 url = "2.5"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }

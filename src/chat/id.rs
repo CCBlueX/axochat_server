@@ -19,7 +19,6 @@ impl fmt::Display for InternalId {
     }
 }
 
-// Updated MessageResponse implementation for Actix 0.13
 impl<A, M> MessageResponse<A, M> for InternalId
 where
     A: Actor,

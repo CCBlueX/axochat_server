@@ -37,7 +37,6 @@ impl Actor for Session {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        // Updated approach that avoids borrowing issues with ctx
         let addr = self.addr.clone();
         let recipient = ctx.address().recipient();
         
@@ -100,7 +99,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
                 warn!("Can't decode binary messages.");
             }
             ws::Message::Close(reason) => {
-                // Fix borrowing issue with reason by cloning it
                 if let Some(ref reason) = reason {
                     info!(
                         "Connection `{}` closed; code: {:?}, reason: {:?}",
@@ -109,7 +107,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
                 } else {
                     info!("Connection `{}` closed.", self.id);
                 }
-                // a stopping actor no longer polls wait futures, so stop after the close frame
+                // a stopping actor does not poll wait futures, so stop after the close frame
                 ctx.wait(
                     self.ws
                         .clone()

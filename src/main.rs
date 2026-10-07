@@ -105,7 +105,6 @@ async fn start_server(config: Config) -> Result<()> {
                 .map_err(|_| Error::RustTLSNoMsg)?;
             let key = PrivateKeyDer::from_pem_file(&key).map_err(|_| Error::RustTLSNoMsg)?;
 
-            // Build rustls server configuration
             let config = ServerConfig::builder()
                 .with_no_client_auth()
                 .with_single_cert(cert_chain, key)

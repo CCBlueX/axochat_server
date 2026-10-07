@@ -57,14 +57,12 @@ impl ChatServer {
         }
 
         if let Some(session_hash) = &session.session_hash {
-            // Clone the session_hash and user_id before moving them into the async block
             let session_hash = session_hash.clone();
             let name = info.name.clone();
             let uuid = info.uuid;
             let userid_for_closure = user_id;
             let session_addr = session.addr.clone();
 
-            // Spawn a Future that performs the authentication
             ctx.spawn(
                 async move {
                     authenticate(&name, &session_hash).await
@@ -97,7 +95,6 @@ impl ChatServer {
 
                                 session.user = Some(info);
 
-                                // Use standalone send_message function
                                 send_message(
                                     &session.addr,
                                     ClientPacket::Success {
