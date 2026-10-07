@@ -13,7 +13,7 @@ openssl-tls = ["dep:openssl", "actix-web/openssl"]
 [dependencies]
 log = "0.4"
 env_logger = "0.11"
-clap = { version = "4.6", features = ["derive"] }
+clap = { version = "4.6", features = ["derive", "env"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 humantime = "2.4"

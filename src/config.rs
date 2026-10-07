@@ -1,110 +1,84 @@
-use crate::error::*;
+use clap::Args;
 use jsonwebtoken::Algorithm;
-use std::{env, fmt, net::SocketAddr, path::PathBuf, str::FromStr, time::Duration};
+use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
-#[derive(Clone)]
+#[derive(Args, Clone)]
 pub struct Config {
+    #[command(flatten)]
     pub net: NetConfig,
+
+    #[command(flatten)]
     pub message: MsgConfig,
+
+    #[command(flatten)]
     pub moderation: ModConfig,
-    pub auth: Option<AuthConfig>,
+
+    #[command(flatten)]
+    pub auth: AuthConfig,
 }
 
-#[derive(Clone)]
+#[derive(Args, Clone)]
 pub struct NetConfig {
     /// The address the server will listen at.
+    #[arg(long = "server-addr", env = "SERVER_ADDR", default_value = "0.0.0.0:8080")]
     pub address: SocketAddr,
 
     /// The SSL certificate file.
+    #[arg(long = "tls-cert-file", env = "TLS_CERT_FILE")]
     pub cert_file: Option<PathBuf>,
     /// The SSL key file.
     /// If the extension is `pem`, `PEM` format will be used, otherwise `ASN1`.
+    #[arg(long = "tls-key-file", env = "TLS_KEY_FILE")]
     pub key_file: Option<PathBuf>,
 }
 
-#[derive(Clone)]
+#[derive(Args, Clone)]
 pub struct MsgConfig {
     /// The maximum message length in chars.
+    #[arg(long = "message-max-length", env = "MESSAGE_MAX_LENGTH", default_value_t = 100)]
     pub max_length: usize,
 
     /// The maximum amount of messages in `count_duration`.
+    #[arg(long = "message-max-messages", env = "MESSAGE_MAX_MESSAGES", default_value_t = 40)]
     pub max_messages: usize,
 
     /// The duration in which the amount of messages cannot be greater.
+    #[arg(
+        long = "message-count-duration",
+        env = "MESSAGE_COUNT_DURATION",
+        default_value = "1m",
+        value_parser = humantime::parse_duration
+    )]
     pub count_duration: Duration,
 }
 
-#[derive(Clone)]
+#[derive(Args, Clone)]
 pub struct AuthConfig {
-    /// The key of the JWT
-    pub secret: String,
+    /// The key of the JWT. JWT login is disabled without it.
+    #[arg(
+        long = "jwt-secret",
+        env = "JWT_SECRET",
+        hide_env_values = true,
+        requires = "valid_time"
+    )]
+    pub secret: Option<String>,
 
     /// The JWT algorithm
+    #[arg(long = "jwt-algorithm", env = "JWT_ALGORITHM", default_value = "HS256")]
     pub algorithm: Algorithm,
 
     /// The time for which a JWT is valid
-    pub valid_time: Duration,
+    #[arg(long = "jwt-valid-time", env = "JWT_VALID_TIME", value_parser = humantime::parse_duration)]
+    pub valid_time: Option<Duration>,
 }
 
-#[derive(Clone)]
+#[derive(Args, Clone)]
 pub struct ModConfig {
     /// The file containing the moderators (line separated).
+    #[arg(long = "moderators-file", env = "MODERATORS_FILE", default_value = "./moderators.txt")]
     pub moderators: PathBuf,
 
     /// The file containing the banned users (line separated).
+    #[arg(long = "banned-file", env = "BANNED_FILE", default_value = "./banned.txt")]
     pub banned: PathBuf,
-}
-
-fn env_opt(key: &str) -> Option<String> {
-    env::var(key).ok().filter(|value| !value.is_empty())
-}
-
-fn env_parse<T>(key: &'static str) -> Result<Option<T>>
-where
-    T: FromStr,
-    T::Err: fmt::Display,
-{
-    env_opt(key)
-        .map(|value| {
-            value.parse().map_err(|err: T::Err| Error::InvalidEnv {
-                key,
-                reason: err.to_string(),
-            })
-        })
-        .transpose()
-}
-
-impl Config {
-    pub fn from_env() -> Result<Config> {
-        Ok(Config {
-            net: NetConfig {
-                address: env_parse("SERVER_ADDR")?.unwrap_or_else(|| ([0, 0, 0, 0], 8080).into()),
-                cert_file: env_parse("TLS_CERT_FILE")?,
-                key_file: env_parse("TLS_KEY_FILE")?,
-            },
-            message: MsgConfig {
-                max_length: env_parse("MESSAGE_MAX_LENGTH")?.unwrap_or(100),
-                max_messages: env_parse("MESSAGE_MAX_MESSAGES")?.unwrap_or(40),
-                count_duration: env_parse::<humantime::Duration>("MESSAGE_COUNT_DURATION")?
-                    .map_or(Duration::from_secs(60), Into::into),
-            },
-            moderation: ModConfig {
-                moderators: env_parse("MODERATORS_FILE")?
-                    .unwrap_or_else(|| PathBuf::from("./moderators.txt")),
-                banned: env_parse("BANNED_FILE")?.unwrap_or_else(|| PathBuf::from("./banned.txt")),
-            },
-            auth: match env_opt("JWT_SECRET") {
-                Some(secret) => Some(AuthConfig {
-                    secret,
-                    algorithm: env_parse("JWT_ALGORITHM")?.unwrap_or(Algorithm::HS256),
-                    valid_time: env_parse::<humantime::Duration>("JWT_VALID_TIME")?
-                        .ok_or(Error::MissingEnv {
-                            key: "JWT_VALID_TIME",
-                        })?
-                        .into(),
-                }),
-                None => None,
-            },
-        })
-    }
 }

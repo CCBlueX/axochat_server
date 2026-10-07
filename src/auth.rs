@@ -98,13 +98,14 @@ pub struct Authenticator {
 }
 
 impl Authenticator {
-    pub fn new(cfg: &AuthConfig) -> Result<Authenticator> {
-        Ok(Authenticator {
+    pub fn new(cfg: &AuthConfig) -> Option<Authenticator> {
+        let secret = cfg.secret.as_ref()?.as_bytes();
+        Some(Authenticator {
             validation: Validation::new(cfg.algorithm),
             header: Header::new(cfg.algorithm),
-            encoding_key: EncodingKey::from_secret(cfg.secret.as_bytes()),
-            decoding_key: DecodingKey::from_secret(cfg.secret.as_bytes()),
-            valid_time: cfg.valid_time,
+            encoding_key: EncodingKey::from_secret(secret),
+            decoding_key: DecodingKey::from_secret(secret),
+            valid_time: cfg.valid_time?,
         })
     }
 

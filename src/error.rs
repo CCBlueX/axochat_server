@@ -10,10 +10,6 @@ pub enum Error {
     IO { source: io::Error },
     #[snafu(display("JSON: {}", source))]
     JSON { source: serde_json::error::Error },
-    #[snafu(display("missing env var: {}", key))]
-    MissingEnv { key: &'static str },
-    #[snafu(display("invalid env var {}: {}", key, reason))]
-    InvalidEnv { key: &'static str, reason: String },
     #[snafu(display("actix-web: {}", source))]
     Actix { source: actix_web::Error },
     #[cfg(feature = "openssl-tls")]
