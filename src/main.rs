@@ -15,10 +15,9 @@ use actix_web::{web, App, HttpServer};
 use uuid::Uuid;
 
 #[cfg(feature = "rustls-tls")]
-use {
-    std::{fs::File, io::BufReader},
-    rustls::{Certificate, PrivateKey, ServerConfig},
-    rustls_pemfile::{certs, read_all, Item},
+use rustls::{
+    pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
+    ServerConfig,
 };
 
 #[cfg(feature = "openssl-tls")]
@@ -105,33 +104,18 @@ async fn start_server(config: Config) -> Result<()> {
         {
             info!("Loading TLS certificate from {:?} and key from {:?}", cert, key);
             
-            // Read cert and key files with proper mutability
-            let mut cert_file = BufReader::new(File::open(&cert)?);
-            let mut key_file = BufReader::new(File::open(&key)?);
-            
-            // Load certificate chain and key
-            let cert_chain = certs(&mut cert_file)
-                .map_err(|_| Error::RustTLSNoMsg)?
-                .into_iter()
-                .map(Certificate)
-                .collect();
-            
-            let key = read_all(&mut key_file)?
-                .into_iter()
-                .find_map(|item| match item {
-                    Item::RSAKey(key) | Item::PKCS8Key(key) => Some(PrivateKey(key)),
-                    _ => None,
-                })
-                .ok_or(Error::RustTLSNoMsg)?;
+            let cert_chain = CertificateDer::pem_file_iter(&cert)
+                .and_then(|certs| certs.collect::<std::result::Result<Vec<_>, _>>())
+                .map_err(|_| Error::RustTLSNoMsg)?;
+            let key = PrivateKeyDer::from_pem_file(&key).map_err(|_| Error::RustTLSNoMsg)?;
 
             // Build rustls server configuration
             let config = ServerConfig::builder()
-                .with_safe_defaults()
                 .with_no_client_auth()
                 .with_single_cert(cert_chain, key)
                 .map_err(|_| Error::RustTLSNoMsg)?;
 
-            server = server.bind_rustls_021(address, config)?;
+            server = server.bind_rustls_0_23(address, config)?;
         }
 
         #[cfg(not(any(feature = "openssl-tls", feature = "rustls-tls")))]

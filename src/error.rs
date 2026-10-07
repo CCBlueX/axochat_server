@@ -1,11 +1,9 @@
-use derive_more::From;
 use serde::Serialize;
 use snafu::Snafu;
 use std::{error, fmt, io};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-// Removed the From derive to avoid conflicts with manually implemented From traits
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("I/O: {}", source))]

@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 use crate::auth::authenticate;
 use actix::*;
-use rand::RngCore;
+use rand::Rng;
 use std::str::FromStr;
 use uuid::Uuid;
 
