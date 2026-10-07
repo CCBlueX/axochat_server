@@ -1,35 +1,16 @@
 use crate::error::*;
 use jsonwebtoken::Algorithm;
-use serde::{
-    de::{self, Deserializer, Visitor},
-    ser::Serializer,
-    Deserialize, Serialize,
-};
-use std::{
-    env, fmt,
-    fs::{self, File},
-    io::{self, Read},
-    net::SocketAddr,
-    ops::Deref,
-    path::PathBuf,
-    time::Duration,
-};
+use std::{env, fmt, net::SocketAddr, path::PathBuf, str::FromStr, time::Duration};
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct Config {
-    #[serde(default)]
     pub net: NetConfig,
-
-    #[serde(default)]
     pub message: MsgConfig,
-
-    #[serde(default)]
     pub moderation: ModConfig,
-
     pub auth: Option<AuthConfig>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct NetConfig {
     /// The address the server will listen at.
     pub address: SocketAddr,
@@ -41,17 +22,7 @@ pub struct NetConfig {
     pub key_file: Option<PathBuf>,
 }
 
-impl Default for NetConfig {
-    fn default() -> NetConfig {
-        NetConfig {
-            address: ([127, 0, 0, 1], 8080).into(),
-            cert_file: None,
-            key_file: None,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct MsgConfig {
     /// The maximum message length in chars.
     pub max_length: usize,
@@ -60,35 +31,22 @@ pub struct MsgConfig {
     pub max_messages: usize,
 
     /// The duration in which the amount of messages cannot be greater.
-    pub count_duration: WDuration,
+    pub count_duration: Duration,
 }
 
-impl Default for MsgConfig {
-    fn default() -> MsgConfig {
-        MsgConfig {
-            max_length: 100,
-            max_messages: 40,
-            count_duration: Duration::from_secs(60).into(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct AuthConfig {
-    /// The file containing the key of the JWT
-    pub key_file: PathBuf,
+    /// The key of the JWT
+    pub secret: String,
 
     /// The JWT algorithm
     pub algorithm: Algorithm,
 
     /// The time for which a JWT is valid
-    pub valid_time: WDuration,
-
-    /// Whether users can be anonymous
-    pub allow_anonymous: bool,
+    pub valid_time: Duration,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct ModConfig {
     /// The file containing the moderators (line separated).
     pub moderators: PathBuf,
@@ -97,88 +55,56 @@ pub struct ModConfig {
     pub banned: PathBuf,
 }
 
-impl Default for ModConfig {
-    fn default() -> ModConfig {
-        ModConfig {
-            moderators: PathBuf::from("./moderators.txt"),
-            banned: PathBuf::from("./banned.txt"),
-        }
-    }
+fn env_opt(key: &str) -> Option<String> {
+    env::var(key).ok().filter(|value| !value.is_empty())
 }
 
-/// Reads the configuration file at `$CONFIG_PATH` or creates one if none was found.
-pub fn read_config() -> Result<Config> {
-    let path = env::var("CONFIG_PATH").unwrap_or_else(|_| String::from("./axochat.toml"));
-    let path = PathBuf::from(path);
-
-    match File::open(&path) {
-        Ok(mut file) => {
-            let mut input = String::new();
-            file.read_to_string(&mut input)?;
-            Ok(toml::from_str(&input)?)
-        }
-        Err(ref err) if err.kind() == io::ErrorKind::NotFound => {
-            let cfg = Config::default();
-            let output = toml::to_string_pretty(&cfg).unwrap();
-            fs::write(path, output)?;
-            Ok(cfg)
-        }
-        Err(err) => Err(err.into()),
-    }
+fn env_parse<T>(key: &'static str) -> Result<Option<T>>
+where
+    T: FromStr,
+    T::Err: fmt::Display,
+{
+    env_opt(key)
+        .map(|value| {
+            value.parse().map_err(|err: T::Err| Error::InvalidEnv {
+                key,
+                reason: err.to_string(),
+            })
+        })
+        .transpose()
 }
 
-#[derive(Eq, PartialEq, Clone, Copy, Debug)]
-pub struct WDuration(Duration);
-
-impl From<Duration> for WDuration {
-    fn from(duration: Duration) -> WDuration {
-        WDuration(duration)
-    }
-}
-
-impl Deref for WDuration {
-    type Target = Duration;
-
-    fn deref(&self) -> &Duration {
-        &self.0
-    }
-}
-
-impl<'de> Deserialize<'de> for WDuration {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<WDuration, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct IdVisitor;
-
-        impl<'de> Visitor<'de> for IdVisitor {
-            type Value = WDuration;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a duration")
-            }
-
-            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                match humantime::parse_duration(value) {
-                    Ok(duration) => Ok(WDuration(duration)),
-                    Err(err) => Err(E::custom(err)),
-                }
-            }
-        }
-
-        deserializer.deserialize_str(IdVisitor)
-    }
-}
-
-impl Serialize for WDuration {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let duration = humantime::format_duration(self.0);
-        serializer.serialize_str(&duration.to_string())
+impl Config {
+    pub fn from_env() -> Result<Config> {
+        Ok(Config {
+            net: NetConfig {
+                address: env_parse("SERVER_ADDR")?.unwrap_or_else(|| ([0, 0, 0, 0], 8080).into()),
+                cert_file: env_parse("TLS_CERT_FILE")?,
+                key_file: env_parse("TLS_KEY_FILE")?,
+            },
+            message: MsgConfig {
+                max_length: env_parse("MESSAGE_MAX_LENGTH")?.unwrap_or(100),
+                max_messages: env_parse("MESSAGE_MAX_MESSAGES")?.unwrap_or(40),
+                count_duration: env_parse::<humantime::Duration>("MESSAGE_COUNT_DURATION")?
+                    .map_or(Duration::from_secs(60), Into::into),
+            },
+            moderation: ModConfig {
+                moderators: env_parse("MODERATORS_FILE")?
+                    .unwrap_or_else(|| PathBuf::from("./moderators.txt")),
+                banned: env_parse("BANNED_FILE")?.unwrap_or_else(|| PathBuf::from("./banned.txt")),
+            },
+            auth: match env_opt("JWT_SECRET") {
+                Some(secret) => Some(AuthConfig {
+                    secret,
+                    algorithm: env_parse("JWT_ALGORITHM")?.unwrap_or(Algorithm::HS256),
+                    valid_time: env_parse::<humantime::Duration>("JWT_VALID_TIME")?
+                        .ok_or(Error::MissingEnv {
+                            key: "JWT_VALID_TIME",
+                        })?
+                        .into(),
+                }),
+                None => None,
+            },
+        })
     }
 }

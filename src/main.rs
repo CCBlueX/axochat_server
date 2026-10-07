@@ -40,8 +40,7 @@ enum Opt {
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let config = config::read_config()?;
-    debug!("Read configuration file: {:?}", config);
+    let config = Config::from_env()?;
 
     let opt = Opt::parse();
     match opt {
@@ -50,7 +49,7 @@ async fn main() -> Result<()> {
             let auth = match config.auth {
                 Some(auth) => auth::Authenticator::new(&auth),
                 None => {
-                    eprintln!("Please add a `auth` segment to your configuration file.");
+                    eprintln!("Set JWT_SECRET to generate tokens.");
                     Err(ClientError::NotSupported.into())
                 }
             }?;
