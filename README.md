@@ -11,6 +11,6 @@ The server is configured through environment variables, see [.env.example](.env.
 cargo run --release -- start
 ```
 
-`compose.yaml` runs it with Docker on a host port, `compose.cloudflared.yaml` behind a Cloudflare tunnel on Docker Swarm. Moderators and bans live in the `data` volume.
+The Docker image runs in `/data`, where the moderator and ban files are kept; mount a volume there.
 
 `axochat generate <name> [uuid]` prints a JWT for testing.
