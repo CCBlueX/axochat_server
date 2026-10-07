@@ -11,27 +11,27 @@ use log::*;
 
 use actix::*;
 use actix_web::{web, HttpRequest, HttpResponse};
-use actix_web_actors::ws;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::{Authenticator, UserInfo};
 use crate::message::{MessageValidator, RateLimiter};
 use crate::moderation::Moderation;
-use rand::{rngs::OsRng, SeedableRng};
+use rand::{rngs::SysRng, SeedableRng};
 use rand_hc::Hc128Rng;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-pub fn chat_route(
+pub async fn chat_route(
     req: HttpRequest,
     stream: web::Payload,
     srv: web::Data<Addr<ChatServer>>,
 ) -> actix_web::Result<HttpResponse> {
-    ws::start(
-        session::Session::new(InternalId::new(0), srv.get_ref().clone()),
-        &req,
-        stream,
-    )
+    let (response, ws, messages) = actix_ws::handle(&req, stream)?;
+    session::Session::create(|ctx| {
+        ctx.add_stream(messages);
+        session::Session::new(InternalId::new(0), srv.get_ref().clone(), ws)
+    });
+    Ok(response)
 }
 
 pub struct ChatServer {
@@ -53,7 +53,7 @@ impl ChatServer {
             connections: HashMap::new(),
             users: HashMap::new(),
 
-            rng: Hc128Rng::from_rng(OsRng).expect("could not initialize hc128 rng"),
+            rng: Hc128Rng::try_from_rng(&mut SysRng).expect("could not initialize hc128 rng"),
             authenticator: config
                 .auth
                 .as_ref()
@@ -65,6 +65,17 @@ impl ChatServer {
 
             current_internal_user_id: 0,
         }
+    }
+}
+
+// try_send would also fail on a full mailbox; only a closed one is a delivery failure.
+pub(crate) fn send_message(recipient: &Recipient<ClientPacket>, message: ClientPacket, context: &str) -> bool {
+    if recipient.connected() {
+        recipient.do_send(message);
+        true
+    } else {
+        warn!("Could not send {} to user: mailbox closed", context);
+        false
     }
 }
 
@@ -110,12 +121,14 @@ struct UserSession {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 struct Disconnect {
     id: InternalId,
 }
 
 /// A clientbound packet
 #[derive(Message, Serialize, Clone)]
+#[rtype(result = "()")]
 #[serde(tag = "m", content = "c")]
 enum ClientPacket {
     MojangInfo {
@@ -146,6 +159,7 @@ enum ClientPacket {
 
 /// A serverbound packet
 #[derive(Message, Deserialize)]
+#[rtype(result = "()")]
 #[serde(tag = "m", content = "c")]
 enum ServerPacket {
     RequestMojangInfo,
@@ -160,6 +174,7 @@ enum ServerPacket {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 struct ServerPacketId {
     user_id: InternalId,
     packet: ServerPacket,

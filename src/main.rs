@@ -7,51 +7,45 @@ mod moderation;
 
 use config::Config;
 use error::*;
+use clap::Parser;
 use log::*;
-use structopt::*;
 
 use actix::*;
 use actix_web::{web, App, HttpServer};
 use uuid::Uuid;
 
-#[cfg(feature = "rust-tls")]
-use {
-    rustls::{
-        internal::pemfile::{certs, rsa_private_keys},
-        NoClientAuth, ServerConfig,
-    },
-    std::{fs::File, io::BufReader},
+#[cfg(feature = "rustls-tls")]
+use rustls::{
+    pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
+    ServerConfig,
 };
 
-#[cfg(feature = "ssl")]
+#[cfg(feature = "openssl-tls")]
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 enum Opt {
     /// Starts the axochat server.
-    #[structopt(name = "start")]
     Start,
     /// Generates a JWT which can be used for logging in.
     /// This should only be used for testing.
     /// If you want to generate JWT for non-testing purposes, send a RequestJWT packet to the server.
-    #[structopt(name = "generate")]
     Generate {
-        #[structopt(name = "name")]
         name: String,
-        #[structopt(name = "uuid")]
         uuid: Option<Uuid>,
     },
 }
 
-fn main() -> Result<()> {
+#[actix_web::main]
+async fn main() -> Result<()> {
     env_logger::init();
 
     let config = config::read_config()?;
     debug!("Read configuration file: {:?}", config);
 
-    let opt = Opt::from_args();
+    let opt = Opt::parse();
     match opt {
-        Opt::Start => start_server(config),
+        Opt::Start => start_server(config).await,
         Opt::Generate { name, uuid } => {
             let auth = match config.auth {
                 Some(auth) => auth::Authenticator::new(&auth),
@@ -70,52 +64,64 @@ fn main() -> Result<()> {
     }
 }
 
-fn start_server(config: Config) -> Result<()> {
-    let system = System::new("axochat");
+async fn start_server(config: Config) -> Result<()> {
     let server_config = config.clone();
     let server = chat::ChatServer::new(server_config).start();
 
-    let server = HttpServer::new(move || {
+    let server_data = web::Data::new(server);
+    let address = config.net.address.to_string();
+
+    let mut server = HttpServer::new(move || {
         App::new()
-            .data(server.clone())
+            .app_data(server_data.clone())
             .service(web::resource("/ws").to(chat::chat_route))
     });
 
     if let (Some(cert), Some(key)) = (config.net.cert_file, config.net.key_file) {
-        #[cfg(all(feature = "ssl", feature = "rust-tls"))]
+        #[cfg(all(feature = "openssl-tls", feature = "rustls-tls"))]
         {
-            compile_error!("Can't enable both the `ssl` and the `rust-tls` feature.")
+            compile_error!("Can't enable both the `openssl-tls` and the `rustls-tls` feature.")
         }
 
-        #[cfg(feature = "ssl")]
+        #[cfg(feature = "openssl-tls")]
         {
             let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-            builder.set_certificate_chain_file(cert)?;
+            builder.set_certificate_chain_file(&cert)?;
             let ft = match key.extension() {
                 Some(ext) if ext == "pem" => SslFiletype::PEM,
                 _ => SslFiletype::ASN1,
             };
-            builder.set_private_key_file(key, ft)?;
+            builder.set_private_key_file(&key, ft)?;
 
-            server.bind_ssl(config.net.address, builder)?.start();
+            server = server.bind_openssl(address, builder)?;
         }
 
-        #[cfg(feature = "rust-tls")]
+        #[cfg(feature = "rustls-tls")]
         {
-            let mut config = ServerConfig::new(NoClientAuth::new());
-            let mut cert_file = BufReader::new(File::open(cert)?);
-            let cert_chain = certs(&mut cert_file).or_else(|()| Err(Error::RustTLSNoMsg))?;
-            let mut key_file = BufReader::new(File::open(key)?);
-            let mut keys = rsa_private_keys(&mut key_file)?;
-            config.set_single_cert(cert_chain, keys.remove(0))?;
-            server.bind_rustls(config.net.address, config)?.start();
+            info!("Loading TLS certificate from {:?} and key from {:?}", cert, key);
+            
+            let cert_chain = CertificateDer::pem_file_iter(&cert)
+                .and_then(|certs| certs.collect::<std::result::Result<Vec<_>, _>>())
+                .map_err(|_| Error::RustTLSNoMsg)?;
+            let key = PrivateKeyDer::from_pem_file(&key).map_err(|_| Error::RustTLSNoMsg)?;
+
+            let config = ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(cert_chain, key)
+                .map_err(|_| Error::RustTLSNoMsg)?;
+
+            server = server.bind_rustls_0_23(address, config)?;
+        }
+
+        #[cfg(not(any(feature = "openssl-tls", feature = "rustls-tls")))]
+        {
+            server = server.bind(address)?;
         }
     } else {
-        server.bind(config.net.address)?.start();
+        server = server.bind(address)?;
     }
 
     info!("Started server at {}", config.net.address);
-    system.run()?;
-
+    server.run().await?;
     Ok(())
 }

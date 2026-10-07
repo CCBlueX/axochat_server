@@ -1,4 +1,4 @@
-use crate::chat::{ChatServer, ClientPacket, InternalId};
+use crate::chat::{ChatServer, ClientPacket, InternalId, send_message};
 use crate::error::*;
 use log::*;
 
@@ -15,23 +15,33 @@ impl ChatServer {
                     "`{}` tried to get the user count without permission",
                     user_id
                 );
-                let _ = session.addr.do_send(ClientPacket::Error {
-                    message: ClientError::NotPermitted,
-                });
+                send_message(
+                    &session.addr,
+                    ClientPacket::Error {
+                        message: ClientError::NotPermitted,
+                    },
+                    "permission denied for user count"
+                );
                 return;
             }
 
-            if let Err(err) = session.addr.do_send(ClientPacket::UserCount {
-                connections: self.connections.len() as u32,
-                logged_in: self.users.len() as u32,
-            }) {
-                warn!("Could not send user count to user `{}`: {}", user_id, err);
-            }
+            send_message(
+                &session.addr,
+                ClientPacket::UserCount {
+                    connections: self.connections.len() as u32,
+                    logged_in: self.users.len() as u32,
+                },
+                "user count"
+            );
         } else {
             info!("`{}` is not logged in.", user_id);
-            let _ = session.addr.do_send(ClientPacket::Error {
-                message: ClientError::NotLoggedIn,
-            });
+            send_message(
+                &session.addr,
+                ClientPacket::Error {
+                    message: ClientError::NotLoggedIn,
+                },
+                "not logged in for user count"
+            );
         }
     }
 }

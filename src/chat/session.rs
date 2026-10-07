@@ -6,27 +6,46 @@ use super::{
 use log::*;
 
 use actix::*;
-use actix_web_actors::ws;
+use actix_ws as ws;
+use std::future::Future;
 
 pub struct Session {
     id: InternalId,
     addr: Addr<ChatServer>,
+    ws: ws::Session,
 }
 
 impl Session {
-    pub fn new(id: InternalId, addr: Addr<ChatServer>) -> Session {
-        Session { id, addr }
+    pub fn new(id: InternalId, addr: Addr<ChatServer>, ws: ws::Session) -> Session {
+        Session { id, addr, ws }
+    }
+
+    // wait, not spawn: keeps outgoing frames in order
+    fn send<F>(&self, ctx: &mut Context<Self>, send: impl FnOnce(ws::Session) -> F)
+    where
+        F: Future<Output = Result<(), ws::Closed>> + 'static,
+    {
+        ctx.wait(send(self.ws.clone()).into_actor(self).map(|res, _, ctx| {
+            if res.is_err() {
+                ctx.stop();
+            }
+        }));
     }
 }
 
 impl Actor for Session {
-    type Context = ws::WebsocketContext<Self>;
+    type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        self.addr
-            .send(Connect::new(ctx.address().recipient()))
+        let addr = self.addr.clone();
+        let recipient = ctx.address().recipient();
+        
+        // wait, not spawn: no frame may be handled before the id is assigned
+        ctx.wait(async move {
+                addr.send(Connect::new(recipient)).await
+            }
             .into_actor(self)
-            .then(|res, actor, _ctx| {
+            .map(|res, actor, _ctx| {
                 match res {
                     Ok(id) => {
                         actor.id = id;
@@ -35,9 +54,8 @@ impl Actor for Session {
                         warn!("Could not accept connection: {}", err);
                     }
                 }
-                fut::ok(())
             })
-            .spawn(ctx)
+        );
     }
 
     fn stopping(&mut self, _ctx: &mut Self::Context) -> Running {
@@ -46,24 +64,33 @@ impl Actor for Session {
     }
 }
 
-impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
-    fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        let msg = match msg {
+            Ok(msg) => msg,
+            // a client vanishing without a close frame ends the payload early
+            Err(ws::ProtocolError::Io(err)) => {
+                debug!("Connection `{}` dropped: {}", self.id, err);
+                ctx.stop();
+                return;
+            }
+            Err(err) => {
+                error!("Error in WebSocket connection: {}", err);
+                ctx.stop();
+                return;
+            }
+        };
+
         debug!("Received message {:?}", msg);
         match msg {
-            ws::Message::Ping(msg) => ctx.pong(&msg),
+            ws::Message::Ping(msg) => self.send(ctx, |mut ws| async move { ws.pong(&msg).await }),
             ws::Message::Pong(_msg) => {}
             ws::Message::Text(msg) => match serde_json::from_slice::<ServerPacket>(msg.as_ref()) {
-                Ok(packet) => self
-                    .addr
-                    .send(ServerPacketId {
-                        user_id: self.id,
-                        packet,
-                    })
-                    .into_actor(self)
-                    .map_err(|err, _actor, _ctx| {
-                        warn!("Could not decode packet: {}", err);
-                    })
-                    .spawn(ctx),
+                // do_send queues right away, so packets reach the server in order
+                Ok(packet) => self.addr.do_send(ServerPacketId {
+                    user_id: self.id,
+                    packet,
+                }),
                 Err(err) => {
                     warn!("Could not decode packet: {}", err);
                 }
@@ -71,16 +98,29 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Session {
             ws::Message::Binary(_msg) => {
                 warn!("Can't decode binary messages.");
             }
-            ws::Message::Nop => {}
-            ws::Message::Close(Some(reason)) => {
-                info!(
-                    "Connection `{}` closed; code: {:?}, reason: {:?}",
-                    self.id, reason.code, reason.description
+            ws::Message::Close(reason) => {
+                if let Some(ref reason) = reason {
+                    info!(
+                        "Connection `{}` closed; code: {:?}, reason: {:?}",
+                        self.id, reason.code, reason.description
+                    );
+                } else {
+                    info!("Connection `{}` closed.", self.id);
+                }
+                // a stopping actor does not poll wait futures, so stop after the close frame
+                ctx.wait(
+                    self.ws
+                        .clone()
+                        .close(reason)
+                        .into_actor(self)
+                        .map(|_, _, ctx| ctx.stop()),
                 );
             }
-            ws::Message::Close(None) => {
-                info!("Connection `{}` closed.", self.id);
+            ws::Message::Continuation(_) => {
+                warn!("Continuation frames are not supported.");
+                ctx.stop();
             }
+            ws::Message::Nop => {}
         }
     }
 }
@@ -90,6 +130,6 @@ impl Handler<ClientPacket> for Session {
 
     fn handle(&mut self, msg: ClientPacket, ctx: &mut Self::Context) {
         let msg = serde_json::to_string(&msg).expect("could not encode message");
-        ctx.text(msg);
+        self.send(ctx, |mut ws| async move { ws.text(msg).await });
     }
 }

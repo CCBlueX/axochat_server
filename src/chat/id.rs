@@ -1,7 +1,5 @@
-use actix::{
-    dev::{MessageResponse, ResponseChannel},
-    *,
-};
+use actix::dev::MessageResponse;
+use actix::*;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -26,9 +24,9 @@ where
     A: Actor,
     M: Message<Result = InternalId>,
 {
-    fn handle<R: ResponseChannel<M>>(self, _: &mut A::Context, tx: Option<R>) {
+    fn handle(self, _: &mut A::Context, tx: Option<actix::dev::OneshotSender<InternalId>>) {
         if let Some(tx) = tx {
-            tx.send(self);
+            let _ = tx.send(self);
         }
     }
 }
