@@ -24,8 +24,8 @@ uuid = { version = "1.27", features = ["serde"] }
 snafu = "0.9"
 
 # Updated web framework and related dependencies
-actix-web = { version = "4.15", default-features = false, features = ["macros", "ws"] }
-actix-web-actors = "4.3"
+actix-web = { version = "4.15", default-features = false, features = ["macros"] }
+actix-ws = "0.4"
 actix = "0.13"
 
 # Authentication

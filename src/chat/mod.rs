@@ -11,7 +11,6 @@ use log::*;
 
 use actix::*;
 use actix_web::{web, HttpRequest, HttpResponse};
-use actix_web_actors::ws;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::{Authenticator, UserInfo};
@@ -22,17 +21,17 @@ use rand_hc::Hc128Rng;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-// Updated to work with Actix Web 4.x
 pub async fn chat_route(
     req: HttpRequest,
     stream: web::Payload,
     srv: web::Data<Addr<ChatServer>>,
 ) -> actix_web::Result<HttpResponse> {
-    ws::start(
-        session::Session::new(InternalId::new(0), srv.get_ref().clone()),
-        &req,
-        stream,
-    )
+    let (response, ws, messages) = actix_ws::handle(&req, stream)?;
+    session::Session::create(|ctx| {
+        ctx.add_stream(messages);
+        session::Session::new(InternalId::new(0), srv.get_ref().clone(), ws)
+    });
+    Ok(response)
 }
 
 pub struct ChatServer {

@@ -6,21 +6,35 @@ use super::{
 use log::*;
 
 use actix::*;
-use actix_web_actors::ws;
+use actix_ws as ws;
+use std::future::Future;
 
 pub struct Session {
     id: InternalId,
     addr: Addr<ChatServer>,
+    ws: ws::Session,
 }
 
 impl Session {
-    pub fn new(id: InternalId, addr: Addr<ChatServer>) -> Session {
-        Session { id, addr }
+    pub fn new(id: InternalId, addr: Addr<ChatServer>, ws: ws::Session) -> Session {
+        Session { id, addr, ws }
+    }
+
+    // wait, not spawn: keeps outgoing frames in order
+    fn send<F>(&self, ctx: &mut Context<Self>, send: impl FnOnce(ws::Session) -> F)
+    where
+        F: Future<Output = Result<(), ws::Closed>> + 'static,
+    {
+        ctx.wait(send(self.ws.clone()).into_actor(self).map(|res, _, ctx| {
+            if res.is_err() {
+                ctx.stop();
+            }
+        }));
     }
 }
 
 impl Actor for Session {
-    type Context = ws::WebsocketContext<Self>;
+    type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
         // Updated approach that avoids borrowing issues with ctx
@@ -51,11 +65,16 @@ impl Actor for Session {
     }
 }
 
-// Updated StreamHandler for actix-web-actors 4.x
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         let msg = match msg {
             Ok(msg) => msg,
+            // a client vanishing without a close frame ends the payload early
+            Err(ws::ProtocolError::Io(err)) => {
+                debug!("Connection `{}` dropped: {}", self.id, err);
+                ctx.stop();
+                return;
+            }
             Err(err) => {
                 error!("Error in WebSocket connection: {}", err);
                 ctx.stop();
@@ -65,7 +84,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
 
         debug!("Received message {:?}", msg);
         match msg {
-            ws::Message::Ping(msg) => ctx.pong(&msg),
+            ws::Message::Ping(msg) => self.send(ctx, |mut ws| async move { ws.pong(&msg).await }),
             ws::Message::Pong(_msg) => {}
             ws::Message::Text(msg) => match serde_json::from_slice::<ServerPacket>(msg.as_ref()) {
                 Ok(packet) => {
@@ -102,8 +121,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
                 } else {
                     info!("Connection `{}` closed.", self.id);
                 }
-                ctx.close(reason);
-                ctx.stop();
+                // a stopping actor no longer polls wait futures, so stop after the close frame
+                ctx.wait(
+                    self.ws
+                        .clone()
+                        .close(reason)
+                        .into_actor(self)
+                        .map(|_, _, ctx| ctx.stop()),
+                );
             }
             ws::Message::Continuation(_) => {
                 warn!("Continuation frames are not supported.");
@@ -119,6 +144,6 @@ impl Handler<ClientPacket> for Session {
 
     fn handle(&mut self, msg: ClientPacket, ctx: &mut Self::Context) {
         let msg = serde_json::to_string(&msg).expect("could not encode message");
-        ctx.text(msg);
+        self.send(ctx, |mut ws| async move { ws.text(msg).await });
     }
 }
