@@ -1,0 +1,24 @@
+# Default stack: chat published on a host port. Cloudflared-tunnel variant: compose.cloudflared.yaml.
+services:
+  axochat:
+    image: registry.ccbluex.net/ccbluex/axochat-server:latest
+    # Ignored by Swarm (which pulls the image above); used by local `docker compose`.
+    build:
+      context: .
+    env_file: .env
+    ports:
+      # Full publish spec [host_ip:]host:container. Under Swarm add mode: host (the ingress mesh ignores 127.0.0.1).
+      - "${BIND_ADDR:-0.0.0.0:8080:8080}"
+    volumes:
+      - data:/data
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: any
+
+volumes:
+  data:
