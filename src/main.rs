@@ -71,6 +71,12 @@ async fn main() -> Result<()> {
 }
 
 async fn start_server(config: Config) -> Result<()> {
+    // every connection is a file; Docker and systemd default to a soft limit of 1024
+    match rlimit::increase_nofile_limit(u64::MAX) {
+        Ok(limit) => info!("Open file limit is {}", limit),
+        Err(err) => warn!("Could not raise the open file limit: {}", err),
+    }
+
     let server_config = config.clone();
     let server = chat::ChatServer::new(server_config).start();
 
