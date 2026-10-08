@@ -12,4 +12,4 @@ cargo run --release -- start
 ```
 
 It needs a MySQL or MariaDB database; tables are created on startup.
-The Docker image runs in `/data`, where the ban file is kept; mount a volume there.
+Mutes from an old `banned.txt` move into the database with `axochat import-bans banned.txt`.

@@ -16,6 +16,11 @@ use log::*;
 
 use actix::*;
 use actix_web::{web, App, HttpServer};
+use rand::{rngs::SysRng, SeedableRng};
+use rand_hc::Hc128Rng;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use uuid::Uuid;
 
 #[cfg(feature = "rustls-tls")]
 use rustls::{
@@ -39,6 +44,8 @@ struct Opt {
 enum Command {
     /// Starts the axochat server.
     Start,
+    /// Mutes the Minecraft UUIDs of a line-separated file, like the old `banned.txt`.
+    ImportBans { file: PathBuf },
 }
 
 #[actix_web::main]
@@ -48,7 +55,67 @@ async fn main() -> Result<()> {
     let Opt { config, command } = Opt::parse();
     match command {
         Command::Start => start_server(config).await,
+        Command::ImportBans { file } => import_bans(config, &file).await,
     }
+}
+
+async fn open_store(config: &Config) -> Result<Addr<store::Store>> {
+    let db = sea_orm::Database::connect(&config.database.url).await?;
+    db.get_schema_registry("axochat::entity::*").sync(&db).await?;
+    Ok(store::Store::new(db).start())
+}
+
+fn mailbox(err: MailboxError) -> Error {
+    Error::IO { source: std::io::Error::other(err) }
+}
+
+async fn active_punishments(store: &Addr<store::Store>) -> Result<Vec<moderation::Punishment>> {
+    let models = store
+        .send(store::LoadPunishments { now: chat::now_ms() })
+        .await
+        .map_err(mailbox)??;
+    Ok(models.into_iter().map(moderation::Punishment::from_model).collect())
+}
+
+async fn import_bans(config: Config, file: &Path) -> Result<()> {
+    let store = open_store(&config).await?;
+    let muted: HashSet<_> = active_punishments(&store)
+        .await?
+        .into_iter()
+        .filter(|punishment| punishment.kind == entity::punishment::Kind::Mute)
+        .filter_map(|punishment| punishment.user)
+        .collect();
+    let mut rng = Hc128Rng::try_from_rng(&mut SysRng).expect("could not initialize hc128 rng");
+
+    let mut imported = 0;
+    for line in std::fs::read_to_string(file)?.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let uuid: Uuid = line.parse()?;
+        let now = chat::now_ms();
+        let create = Some((chat::new_id(&mut rng), now));
+        let targets = store
+            .send(store::MinecraftTargets { uuid, create })
+            .await
+            .map_err(mailbox)??;
+        for target in targets.into_iter().filter(|target| !muted.contains(&target.id)) {
+            let punishment = moderation::Punishment {
+                id: chat::new_id(&mut rng),
+                kind: entity::punishment::Kind::Mute,
+                user: Some(target.id),
+                ip: None,
+                reason: String::new(),
+                issued_by: None,
+                created_at: now,
+                expires_at: None,
+            };
+            store
+                .send(store::Persist(vec![store::Write::Punish(punishment.to_model())]))
+                .await
+                .map_err(mailbox)?;
+            imported += 1;
+        }
+    }
+    println!("Muted {} users.", imported);
+    Ok(())
 }
 
 async fn start_server(config: Config) -> Result<()> {
@@ -58,12 +125,11 @@ async fn start_server(config: Config) -> Result<()> {
         Err(err) => warn!("Could not raise the open file limit: {}", err),
     }
 
-    let db = sea_orm::Database::connect(&config.database.url).await?;
-    db.get_schema_registry("axochat::entity::*").sync(&db).await?;
-    let store = store::Store::new(db).start();
+    let store = open_store(&config).await?;
+    let punishments = active_punishments(&store).await?;
 
     let server_config = config.clone();
-    let server = chat::ChatServer::new(server_config, store).start();
+    let server = chat::ChatServer::new(server_config, store, punishments).start();
 
     let server_data = web::Data::new(server);
     let real_ip = web::Data::new(ip::RealIp::new(

@@ -1,4 +1,5 @@
-use super::Frame;
+use super::{Frame, Identity, Kind};
+use crate::entity::punishment;
 use crate::error::ClientError;
 use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
@@ -42,6 +43,45 @@ pub enum ClientPacket {
     Hello {
         protocol: u32,
     },
+    Punished {
+        kind: punishment::Kind,
+        reason: String,
+        expires: Option<i64>,
+    },
+    Punishments {
+        user: UserRef,
+        punishments: Vec<PunishmentView>,
+    },
+}
+
+#[derive(Serialize, Clone)]
+pub struct UserRef {
+    pub id: Uuid,
+    pub kind: Kind,
+    pub name: String,
+    pub uuid: Uuid,
+}
+
+impl From<&Identity> for UserRef {
+    fn from(identity: &Identity) -> UserRef {
+        UserRef {
+            id: identity.id,
+            kind: identity.kind,
+            name: identity.name.clone(),
+            uuid: identity.uuid,
+        }
+    }
+}
+
+#[derive(Serialize, Clone)]
+pub struct PunishmentView {
+    pub id: Uuid,
+    pub kind: punishment::Kind,
+    pub ip: Option<String>,
+    pub reason: String,
+    pub issued_by: Option<UserRef>,
+    pub created: i64,
+    pub expires: Option<i64>,
 }
 
 impl ClientPacket {
@@ -88,6 +128,18 @@ pub enum ServerPacket {
     UnbanUser { user: Uuid },
     RequestUserCount,
     Hello { protocol: u32 },
+    Punish {
+        user: Option<String>,
+        ip: Option<String>,
+        kind: punishment::Kind,
+        /// Seconds; `None` is permanent.
+        duration: Option<u64>,
+        reason: String,
+        #[serde(default)]
+        include_ip: bool,
+    },
+    Pardon { user: Option<String>, ip: Option<String> },
+    RequestPunishments { user: String },
 }
 
 /// The author of a v1 message.
@@ -110,6 +162,8 @@ pub enum SuccessReason {
     Login,
     Ban,
     Unban,
+    Punish,
+    Pardon,
 }
 
 #[cfg(test)]

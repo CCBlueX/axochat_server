@@ -1,4 +1,5 @@
-use crate::chat::{send_message, ChatServer, ClientPacket, InternalId, Login, UserId};
+use crate::chat::{now_ms, send_message, ChatServer, ClientPacket, InternalId, Login, Protocol, UserId};
+use crate::entity::punishment::Kind;
 use crate::error::*;
 use log::*;
 
@@ -66,9 +67,15 @@ impl ChatServer {
             return false;
         }
 
-        if self.moderation.is_banned(&self.identity(user).uuid) {
-            info!("User `{}` tried to send message while banned", user_id);
-            self.send_error(user_id, ClientError::Banned);
+        let Some(connection) = self.connections.get(&user_id) else { return false };
+        let muted = self.moderation.find(Kind::Mute, Some(user), Some(connection.ip), now_ms());
+        if muted.is_some() && !self.is_staff(user) {
+            info!("User `{}` tried to send message while muted", user_id);
+            let error = match connection.protocol {
+                Protocol::V1 => ClientError::Banned,
+                Protocol::V2 => ClientError::Muted,
+            };
+            self.send_error(user_id, error);
             return false;
         }
 

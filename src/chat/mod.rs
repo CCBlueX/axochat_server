@@ -15,8 +15,8 @@ use crate::entity::user;
 use crate::error::ClientError;
 use crate::ip::RealIp;
 use crate::message::{MessageValidator, RateLimiter};
-use crate::moderation::Moderation;
-use crate::store::Store;
+use crate::moderation::{Moderation, Punishment};
+use crate::store::{FindUser, Persist, Store, Write};
 use log::*;
 
 use actix::*;
@@ -35,6 +35,7 @@ const MAX_FRAME_SIZE: usize = 64 * 1024;
 /// Outgoing login requests at once; a restart reconnects everyone at the same time.
 const CONCURRENT_LOGINS: usize = 64;
 const ROLE_REFRESH: Duration = Duration::from_secs(600);
+const MAINTENANCE: Duration = Duration::from_secs(3600);
 
 pub async fn chat_route(
     req: HttpRequest,
@@ -109,7 +110,7 @@ pub struct ChatServer {
 }
 
 impl ChatServer {
-    pub fn new(config: Config, store: Addr<Store>) -> ChatServer {
+    pub fn new(config: Config, store: Addr<Store>, punishments: Vec<Punishment>) -> ChatServer {
         ChatServer {
             connections: HashMap::new(),
             users: HashMap::new(),
@@ -121,8 +122,7 @@ impl ChatServer {
             roles: HashMap::new(),
             rng: Hc128Rng::try_from_rng(&mut SysRng).expect("could not initialize hc128 rng"),
             validator: MessageValidator::new(config.message.clone()),
-            moderation: Moderation::new(config.moderation.clone())
-                .expect("could not start moderation"),
+            moderation: Moderation::new(punishments),
             config,
 
             current_internal_user_id: 0,
@@ -172,6 +172,78 @@ impl ChatServer {
             .flat_map(|online| online.connections.iter())
             .filter_map(|id| self.connections.get(id).map(|connection| (*id, connection)))
     }
+
+    fn send_v2(&self, id: InternalId, packet: ClientPacket) -> bool {
+        self.connections
+            .get(&id)
+            .is_some_and(|connection| connection.protocol >= Protocol::V2 && send_message(connection, packet))
+    }
+
+    fn persist(&self, writes: Vec<Write>) {
+        self.store.do_send(Persist(writes));
+    }
+
+    /// Resolves a public id or name: online users directly, everyone else from the database.
+    fn resolve_user<F>(&mut self, ctx: &mut Context<Self>, query: String, then: F)
+    where
+        F: FnOnce(&mut ChatServer, &mut Context<ChatServer>, Option<Resolved>) + 'static,
+    {
+        let online = Uuid::parse_str(&query)
+            .ok()
+            .filter(|id| self.users.contains_key(id))
+            .or_else(|| self.find_online(&query));
+        if let Some(user) = online {
+            let resolved = Resolved {
+                identity: self.identity(user).clone(),
+                last_ip: self.online_connections(user).next().map(|(_, connection)| connection.ip),
+            };
+            then(self, ctx, Some(resolved));
+            return;
+        }
+
+        let store = self.store.clone();
+        ctx.spawn(async move { store.send(FindUser(query)).await }.into_actor(self).map(
+            move |result, actor, ctx| {
+                let resolved = match result {
+                    Ok(Ok(model)) => model.map(|model| {
+                        let identity = Identity::of(&model);
+                        actor.directory.entry(identity.id).or_insert_with(|| identity.clone());
+                        Resolved {
+                            identity,
+                            last_ip: model.last_ip.and_then(|ip| ip.parse().ok()),
+                        }
+                    }),
+                    Ok(Err(err)) => {
+                        error!("Could not look up user: {}", err);
+                        None
+                    }
+                    Err(err) => {
+                        error!("Store unavailable: {}", err);
+                        None
+                    }
+                };
+                then(actor, ctx, resolved)
+            },
+        ));
+    }
+
+    /// The socket stays open, as old clients reconnect at once.
+    fn logout(&mut self, id: InternalId) {
+        let Some(connection) = self.connections.get_mut(&id) else { return };
+        let Login::User(user) = connection.login else { return };
+        connection.login = Login::Anonymous;
+        if let Some(online) = self.users.get_mut(&user) {
+            online.connections.retain(|connection| *connection != id);
+            if online.connections.is_empty() {
+                self.users.remove(&user);
+            }
+        }
+    }
+}
+
+pub(super) struct Resolved {
+    identity: Identity,
+    last_ip: Option<IpAddr>,
 }
 
 // try_send would also fail on a full mailbox; only a closed one is a delivery failure.
@@ -191,6 +263,12 @@ impl Actor for ChatServer {
     fn started(&mut self, ctx: &mut Context<Self>) {
         self.refresh_roles(ctx);
         ctx.run_interval(ROLE_REFRESH, |actor, ctx| actor.refresh_roles(ctx));
+        ctx.run_interval(MAINTENANCE, |actor, _ctx| {
+            let now = now_ms();
+            actor.moderation.prune(now);
+            let retention = actor.config.moderation.ip_retention.as_millis() as i64;
+            actor.persist(vec![Write::ForgetIps { seen_before: now - retention }]);
+        });
     }
 }
 
@@ -208,12 +286,15 @@ impl ChatServer {
     }
 
     fn is_staff(&self, user: UserId) -> bool {
-        self.users.get(&user).is_some_and(|online| {
-            online
-                .roles
-                .iter()
-                .any(|role| self.roles.get(role).is_some_and(|role| role.is_staff))
-        })
+        self.users
+            .get(&user)
+            .is_some_and(|online| self.has_staff_role(&online.roles))
+    }
+
+    fn has_staff_role(&self, roles: &[String]) -> bool {
+        roles
+            .iter()
+            .any(|role| self.roles.get(role).is_some_and(|role| role.is_staff))
     }
 }
 

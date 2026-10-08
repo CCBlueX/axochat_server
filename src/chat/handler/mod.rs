@@ -1,5 +1,5 @@
 mod account;
-mod ban;
+mod punish;
 mod count;
 mod hello;
 mod jwt;
@@ -37,10 +37,26 @@ impl Handler<ServerPacketId> for ChatServer {
                 self.handle_private_message(user_id, receiver, content);
             }
             ServerPacket::BanUser { user } => {
-                self.ban_user(user_id, &user);
+                self.ban_user(user_id, user, ctx);
             }
             ServerPacket::UnbanUser { user } => {
-                self.unban_user(user_id, &user);
+                self.unban_user(user_id, user, ctx);
+            }
+            ServerPacket::Punish {
+                user,
+                ip,
+                kind,
+                duration,
+                reason,
+                include_ip,
+            } => {
+                self.handle_punish(user_id, user, ip, kind, duration, reason, include_ip, ctx);
+            }
+            ServerPacket::Pardon { user, ip } => {
+                self.handle_pardon(user_id, user, ip, ctx);
+            }
+            ServerPacket::RequestPunishments { user } => {
+                self.handle_request_punishments(user_id, user, ctx);
             }
             ServerPacket::RequestUserCount => {
                 self.send_user_count(user_id);

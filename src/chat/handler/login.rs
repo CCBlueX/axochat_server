@@ -1,5 +1,5 @@
 use crate::chat::{new_id, now_ms, ChatServer, ClientPacket, Identity, InternalId, Login, OnlineUser, SuccessReason};
-use crate::entity::user;
+use crate::entity::{punishment::Kind, user};
 use crate::error::ClientError;
 use crate::message::RateLimiter;
 use crate::store::{Identify, IdentityKey, Store};
@@ -55,18 +55,36 @@ impl ChatServer {
         if connection.login != Login::Pending {
             return;
         }
+        connection.login = Login::Anonymous;
+        let ip = connection.ip;
 
         let verified = match result {
             Ok(verified) => verified,
             Err(error) => {
-                connection.login = Login::Anonymous;
                 self.send_error(id, error);
                 return;
             }
         };
 
         let identity = Identity::of(&verified.model);
+        let ban = self
+            .moderation
+            .find(Kind::Ban, Some(identity.id), Some(ip), now_ms())
+            .filter(|_| !self.has_staff_role(&verified.roles));
+        if let Some(ban) = ban {
+            info!("Banned user `{}` ({}) tried to log in.", identity.name, identity.id);
+            let punished = ClientPacket::Punished {
+                kind: ban.kind,
+                reason: ban.reason.clone(),
+                expires: ban.expires_at,
+            };
+            self.send_v2(id, punished);
+            self.send_error(id, ClientError::Banned);
+            return;
+        }
+
         info!("User `{}` logged in as `{}` ({}).", id, identity.name, identity.id);
+        let Some(connection) = self.connections.get_mut(&id) else { return };
         connection.login = Login::User(identity.id);
         connection.allow_messages = allow_messages;
         connection.session_hash = None;

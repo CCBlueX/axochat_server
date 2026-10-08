@@ -68,9 +68,14 @@ pub struct MsgConfig {
 
 #[derive(Args, Clone)]
 pub struct ModConfig {
-    /// The file containing the banned users (line separated).
-    #[arg(long = "banned-file", env = "BANNED_FILE", default_value = "./banned.txt")]
-    pub banned: PathBuf,
+    /// How long the last address of a user is kept for IP bans after they were last seen.
+    #[arg(
+        long = "ip-retention",
+        env = "IP_RETENTION",
+        default_value = "30d",
+        value_parser = humantime::parse_duration
+    )]
+    pub ip_retention: Duration,
 }
 
 #[derive(Args, Clone)]

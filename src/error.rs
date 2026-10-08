@@ -85,6 +85,8 @@ pub enum ClientError {
     InvalidId,
     Internal,
     InvalidPacket,
+    Muted,
+    UnknownUser,
 }
 
 impl ClientError {
@@ -108,6 +110,8 @@ impl ClientError {
             InvalidId => "InvalidId",
             Internal => "Internal",
             InvalidPacket => "InvalidPacket",
+            Muted => "Muted",
+            UnknownUser => "UnknownUser",
         }
     }
 
