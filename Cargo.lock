@@ -355,6 +355,7 @@ dependencies = [
  "actix",
  "actix-web",
  "actix-ws",
+ "bytestring",
  "clap",
  "env_logger",
  "humantime",

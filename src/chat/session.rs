@@ -1,17 +1,19 @@
-use super::{
-    connect::Connect, ChatServer, ClientPacket, Disconnect, InternalId, ServerPacket,
-    ServerPacketId,
-};
+use super::{connect::Connect, ChatServer, Disconnect, InternalId, ServerPacket, ServerPacketId};
 
 use log::*;
 
 use actix::*;
 use actix_ws as ws;
+use bytestring::ByteString;
 use std::future::Future;
 use std::time::{Duration, Instant};
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 const PONG_TIMEOUT: Duration = Duration::from_secs(90);
+
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
+pub struct Frame(pub ByteString);
 
 pub struct Session {
     id: InternalId,
@@ -61,7 +63,7 @@ impl Actor for Session {
     fn started(&mut self, ctx: &mut Self::Context) {
         let addr = self.addr.clone();
         let recipient = ctx.address().recipient();
-        
+
         // wait, not spawn: no frame may be handled before the id is assigned
         ctx.wait(async move {
                 addr.send(Connect::new(recipient)).await
@@ -113,7 +115,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
             }
         };
 
-        debug!("Received message {:?}", msg);
         match msg {
             ws::Message::Ping(msg) => self.send(ctx, |mut ws| async move { ws.pong(&msg).await }),
             ws::Message::Pong(_msg) => self.last_pong = Some(Instant::now()),
@@ -150,11 +151,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
     }
 }
 
-impl Handler<ClientPacket> for Session {
+impl Handler<Frame> for Session {
     type Result = ();
 
-    fn handle(&mut self, msg: ClientPacket, ctx: &mut Self::Context) {
-        let msg = serde_json::to_string(&msg).expect("could not encode message");
-        self.send(ctx, |mut ws| async move { ws.text(msg).await });
+    fn handle(&mut self, Frame(frame): Frame, ctx: &mut Self::Context) {
+        self.send(ctx, |mut ws| async move { ws.text(frame).await });
     }
 }

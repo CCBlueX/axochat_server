@@ -1,16 +1,16 @@
 use log::*;
 
-use super::{ChatServer, ClientPacket, InternalId, SessionState};
+use super::{session::Frame, ChatServer, InternalId, SessionState};
 use actix::*;
 
 #[derive(Message)]
 #[rtype(InternalId)]
 pub(super) struct Connect {
-    addr: Recipient<ClientPacket>,
+    addr: Recipient<Frame>,
 }
 
 impl Connect {
-    pub fn new(addr: Recipient<ClientPacket>) -> Connect {
+    pub fn new(addr: Recipient<Frame>) -> Connect {
         Connect { addr }
     }
 }

@@ -4,6 +4,7 @@ mod id;
 mod session;
 
 pub use id::*;
+pub use session::Frame;
 
 use crate::config::Config;
 use crate::error::*;
@@ -21,6 +22,8 @@ use rand_hc::Hc128Rng;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
+const MAX_FRAME_SIZE: usize = 64 * 1024;
+
 pub async fn chat_route(
     req: HttpRequest,
     stream: web::Payload,
@@ -28,7 +31,7 @@ pub async fn chat_route(
 ) -> actix_web::Result<HttpResponse> {
     let (response, ws, messages) = actix_ws::handle(&req, stream)?;
     session::Session::create(|ctx| {
-        ctx.add_stream(messages);
+        ctx.add_stream(messages.max_frame_size(MAX_FRAME_SIZE));
         session::Session::new(InternalId::new(0), srv.get_ref().clone(), ws)
     });
     Ok(response)
@@ -65,10 +68,14 @@ impl ChatServer {
     }
 }
 
+fn encode(packet: &ClientPacket) -> Frame {
+    Frame(serde_json::to_string(packet).expect("could not encode packet").into())
+}
+
 // try_send would also fail on a full mailbox; only a closed one is a delivery failure.
-pub(crate) fn send_message(recipient: &Recipient<ClientPacket>, message: ClientPacket, context: &str) -> bool {
+fn send_message(recipient: &Recipient<Frame>, message: ClientPacket, context: &str) -> bool {
     if recipient.connected() {
-        recipient.do_send(message);
+        recipient.do_send(encode(&message));
         true
     } else {
         warn!("Could not send {} to user: mailbox closed", context);
@@ -99,7 +106,7 @@ impl Handler<Disconnect> for ChatServer {
 }
 
 pub(self) struct SessionState {
-    addr: Recipient<ClientPacket>,
+    addr: Recipient<Frame>,
     session_hash: Option<String>,
     login_pending: bool,
     user: Option<User>,
@@ -123,8 +130,7 @@ struct Disconnect {
 }
 
 /// A clientbound packet
-#[derive(Message, Serialize, Clone)]
-#[rtype(result = "()")]
+#[derive(Serialize, Clone)]
 #[serde(tag = "m", content = "c")]
 enum ClientPacket {
     MojangInfo {

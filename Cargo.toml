@@ -24,6 +24,7 @@ snafu = "0.9"
 
 actix-web = { version = "4.15", default-features = false, features = ["macros"] }
 actix-ws = "0.4"
+bytestring = "1"
 actix = "0.13"
 
 jsonwebtoken = { version = "11.1", features = ["aws_lc_rs"] }
