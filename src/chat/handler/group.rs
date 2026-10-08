@@ -99,7 +99,7 @@ impl ChatServer {
                     .iter()
                     .filter_map(|(member, (role, _))| {
                         Some(GroupMemberView {
-                            user: self.known_ref(*member)?,
+                            user: self.ref_for(user, *member)?,
                             role: *role,
                             online: self.users.contains_key(member),
                         })

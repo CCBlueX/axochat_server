@@ -81,7 +81,7 @@ impl ChatServer {
             // a name nobody has answers like a real account would
             let Some(target) = resolved else {
                 match action {
-                    FriendAction::Request => {}
+                    FriendAction::Request => actor.send_friends(user),
                     FriendAction::Accept | FriendAction::Decline => actor.send_error(user_id, ClientError::NoInvite),
                     FriendAction::Remove => actor.send_error(user_id, ClientError::NotFriends),
                 }
@@ -111,7 +111,10 @@ impl ChatServer {
     pub(super) fn handle_block(&mut self, user_id: InternalId, query: String, blocked: bool, ctx: &mut Context<Self>) {
         let Some(user) = self.acting_user(user_id) else { return };
         self.resolve_user(ctx, user, query, Scope::Anyone, move |actor, _ctx, resolved| {
-            let Some(target) = resolved else { return };
+            let Some(target) = resolved else {
+                actor.send_blocks(user);
+                return;
+            };
             let target_id = target.identity.id;
             // the blocked user only hears of it through a friendship or request that disappears
             let target_affected = actor.social.get(user, target_id).is_some_and(|kind| kind != Kind::Block)
@@ -134,10 +137,10 @@ impl ChatServer {
         if !self.users.contains_key(&user) {
             return;
         }
-        let refs = |users: Vec<UserId>| -> Vec<UserRef> {
-            users
+        let refs = |others: Vec<UserId>| -> Vec<UserRef> {
+            others
                 .into_iter()
-                .filter_map(|user| self.known_ref(user))
+                .filter_map(|other| self.ref_for(user, other))
                 .collect()
         };
         let friends = self
@@ -145,7 +148,7 @@ impl ChatServer {
             .friends(user)
             .filter_map(|(friend, since)| {
                 Some(FriendView {
-                    user: self.known_ref(friend)?,
+                    user: self.ref_for(user, friend)?,
                     since,
                     online: self.users.contains_key(&friend),
                     server: self.visible_server(friend),
@@ -166,7 +169,7 @@ impl ChatServer {
         let users = self
             .social
             .blocked(user)
-            .filter_map(|blocked| self.known_ref(blocked))
+            .filter_map(|blocked| self.ref_for(user, blocked))
             .collect();
         let packet = ClientPacket::Blocks { users };
         for (id, _) in self.online_connections(user) {

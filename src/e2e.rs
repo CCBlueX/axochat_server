@@ -12,6 +12,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Duration;
 
 const NOTCH: &str = "069a79f444e94726a5befca90e38aaf5";
+const NIL: &str = "00000000-0000-0000-0000-000000000000";
 
 fn uuid_of(name: &str) -> String {
     if name.eq_ignore_ascii_case("notch") {
@@ -243,6 +244,20 @@ async fn protocol() {
     assert_eq!(author["minecraft"]["name"], player);
     assert_eq!(author["uuid"], author["minecraft"]["uuid"]);
 
+    // a Minecraft account cannot be found by its name, only by the id its messages carry
+    bob.send(json!({ "m": "Block", "c": { "user": "Notch", "blocked": true } })).await;
+    assert_eq!(bob.next("Blocks").await["c"]["users"], json!([]));
+    old.send(json!({ "m": "Message", "c": { "content": "notch here" } })).await;
+    let notch = bob.next("ChatMessage").await["c"]["author"]["id"].clone();
+    bob.send(json!({ "m": "Block", "c": { "user": notch, "blocked": true } })).await;
+    let blocked = bob.next("Blocks").await["c"]["users"][0].clone();
+    assert_eq!((blocked["name"].as_str(), blocked["uuid"].as_str()), (Some("Notch"), Some(NIL)));
+
+    // what an account plays on only shows to its friends and party
+    bob.send(json!({ "m": "Friend", "c": { "action": "request", "user": format!("Alice{}", run) } })).await;
+    let requested = bob.next("Friends").await["c"]["outgoing"][0].clone();
+    assert_eq!((requested["uuid"].as_str(), &requested["minecraft"]), (Some(NIL), &Value::Null));
+
     // an invite to a name nobody has looks like any other
     alice.send(json!({ "m": "Party", "c": { "action": "invite", "user": format!("Nobody{}", run) } })).await;
     loop {
@@ -264,7 +279,8 @@ async fn protocol() {
         let party = bob.next("Party").await;
         let members = party["c"]["party"]["members"].as_array().unwrap().clone();
         let alice = members.iter().find(|member| member["user"]["name"] == format!("Alice{}", run));
-        if alice.is_some_and(|alice| alice["relation"] == "world") {
+        if let Some(alice) = alice.filter(|alice| alice["relation"] == "world") {
+            assert_eq!(alice["user"]["minecraft"]["name"], player);
             break;
         }
     }

@@ -204,7 +204,7 @@ impl ChatServer {
         let named = |user: &UserId| {
             self.directory
                 .get(user)
-                .filter(|identity| identity.name.eq_ignore_ascii_case(name) && scope.includes(identity.kind))
+                .filter(|identity| identity.name.eq_ignore_ascii_case(name) && scope.by_name(identity.kind))
         };
         let contacts = self
             .social
@@ -248,7 +248,7 @@ impl ChatServer {
     {
         let known = Uuid::parse_str(&query)
             .ok()
-            .filter(|id| self.directory.get(id).is_some_and(|identity| scope.includes(identity.kind)))
+            .filter(|id| self.directory.get(id).is_some_and(|identity| scope.by_id(identity.kind)))
             .or_else(|| self.find_by_name(requester, &query, scope));
         let query = known.map_or(query, |user| user.to_string());
         if let Some(user) = known.filter(|user| self.users.contains_key(user)) {
@@ -262,8 +262,12 @@ impl ChatServer {
         }
 
         let store = self.store.clone();
-        let accounts = scope == Scope::Accounts;
-        ctx.spawn(async move { store.send(FindUser { query, accounts }).await }.into_actor(self).map(
+        let find = FindUser {
+            query,
+            minecraft_by_id: scope != Scope::Accounts,
+            minecraft_by_name: scope == Scope::Staff,
+        };
+        ctx.spawn(async move { store.send(find).await }.into_actor(self).map(
             move |result, actor, ctx| {
                 let resolved = match result {
                     Ok(Ok(model)) => model.map(|model| {
@@ -322,12 +326,19 @@ impl ChatServer {
 pub(super) enum Scope {
     /// Messages, friends, parties and groups are between LiquidBounce Accounts.
     Accounts,
+    /// Names still only find accounts: a Minecraft account is named after itself, and nobody may find out
+    /// whether it uses LiquidChat. It is addressed by the id its messages carry.
     Anyone,
+    Staff,
 }
 
 impl Scope {
-    fn includes(self, kind: Kind) -> bool {
-        self == Scope::Anyone || kind == Kind::Account
+    fn by_id(self, kind: Kind) -> bool {
+        self != Scope::Accounts || kind == Kind::Account
+    }
+
+    fn by_name(self, kind: Kind) -> bool {
+        self == Scope::Staff || kind == Kind::Account
     }
 }
 
@@ -415,6 +426,19 @@ impl ChatServer {
             .find_map(|(_, connection)| connection.minecraft.clone());
         if let Some(minecraft) = &reference.minecraft {
             reference.uuid = minecraft.uuid;
+        }
+        Some(reference)
+    }
+
+    /// Whose Minecraft account someone plays on only shows to themselves, their friends and their party.
+    fn ref_for(&self, viewer: UserId, user: UserId) -> Option<UserRef> {
+        let mut reference = self.known_ref(user)?;
+        let close = viewer == user
+            || self.social.are_friends(viewer, user)
+            || self.parties.of(viewer).is_some_and(|party| party.users().any(|member| member == user));
+        if !close {
+            reference.uuid = Uuid::nil();
+            reference.minecraft = None;
         }
         Some(reference)
     }

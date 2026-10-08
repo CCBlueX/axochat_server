@@ -319,20 +319,26 @@ on both sides; a Minecraft account gets `AccountRequired`. Everyone chats in
 
 After logging in, an account session can prove the Minecraft account it plays
 on with `RequestMojangInfo` and `LoginMojang`, answered by `Success`
-(`Minecraft`). Others then see that account as `minecraft`.
+(`Minecraft`). Its friends, its party and readers of its messages then see that
+account as `minecraft`.
 
 Every user has a public `id`. Wherever a packet takes a `user`, it accepts an
-`id` or a name. Names are not unique: they resolve to the requester's friends
-and party first, then online users, then everyone else, the user seen first
-winning; where only accounts count, only account names do. Account names drop
-formatting codes and invisible or direction-changing characters, turn
-whitespace into `_` and are at most 32 characters long. The server answers the same whether
-an account exists or not: invites and friend requests to unknown names vanish,
-direct messages to them are not accepted and reports succeed.
+`id` or the name of a LiquidBounce Account. A Minecraft account is named after
+itself, so only staff find it by name; everyone else uses the `id` its messages
+carry. Nobody can tell whether a Minecraft account uses LiquidChat: `Block` and
+friend requests always answer with `Blocks` and `Friends`, invites to unknown
+names vanish, direct messages to them are not accepted and reports succeed.
+
+Names are not unique: they resolve to the requester's friends and party first,
+then online users, then everyone else, the user seen first winning. Account
+names drop formatting codes and invisible or direction-changing characters, turn
+whitespace into `_` and are at most 32 characters long.
 
 ### UserRef
 - `uuid` is the Minecraft UUID used for the head, the nil UUID if unknown.
 - `minecraft` is the Minecraft account an online account proved it plays on.
+- Both only show to the user, their friends and their party, and on their own
+  messages; everyone else gets the nil UUID and no `minecraft`.
 
 ```json
 {

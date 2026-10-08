@@ -332,22 +332,22 @@ impl Handler<LoadPunishments> for Store {
 #[rtype(result = "Result<Option<user::Model>, DbErr>")]
 pub struct FindUser {
     pub query: String,
-    /// Only LiquidBounce Accounts.
-    pub accounts: bool,
+    pub minecraft_by_id: bool,
+    pub minecraft_by_name: bool,
 }
 
 impl Handler<FindUser> for Store {
     type Result = AtomicResponse<Self, Result<Option<user::Model>, DbErr>>;
 
-    fn handle(&mut self, FindUser { query, accounts }: FindUser, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, FindUser { query, minecraft_by_id, minecraft_by_name }: FindUser, _ctx: &mut Context<Self>) -> Self::Result {
         atomic!(self, db => {
             if let Ok(id) = Uuid::parse_str(&query) {
                 if let Some(user) = user::Entity::find_by_id(id).one(&db).await? {
-                    return Ok(Some(user).filter(|user| !accounts || user.account.is_some()));
+                    return Ok(Some(user).filter(|user| minecraft_by_id || user.account.is_some()));
                 }
             }
             let mut find = user::Entity::find().filter(user::Column::Name.eq(query));
-            if accounts {
+            if !minecraft_by_name {
                 find = find.filter(user::Column::Account.is_not_null());
             }
             // names are not unique; whoever had it first keeps it

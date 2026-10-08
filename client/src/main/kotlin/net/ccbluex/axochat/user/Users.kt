@@ -11,6 +11,8 @@ import java.util.UUID
 public data class Player(val uuid: UUID, val name: String)
 
 /**
+ * Outside friends, the party and their own messages, [uuid] is nil and [minecraft] `null`.
+ *
  * @param uuid the account shown as their head, nil if unknown
  * @param minecraft the Minecraft account an online LiquidBounce Account proved it plays on
  */

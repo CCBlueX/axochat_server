@@ -33,7 +33,7 @@ impl ChatServer {
                         if let Some(target) = target.filter(|_| notify) {
                             let invite = ClientPacket::PartyInvite {
                                 party,
-                                from: actor.user_ref(user),
+                                from: actor.ref_for(target, user).expect("online users are in the directory"),
                                 expires: now + crate::chat::party::INVITE_TIME,
                             };
                             actor.send_user_v2(target, invite);
