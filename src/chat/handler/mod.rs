@@ -34,6 +34,7 @@ impl Handler<ServerPacketId> for ChatServer {
                 self.handle_jwt(user_id);
             }
             ServerPacket::Message { content } => self.handle_message(user_id, content),
+            ServerPacket::ChatMessage { channel, content } => self.handle_chat_message(user_id, channel, content),
             ServerPacket::PrivateMessage { receiver, content } => {
                 self.handle_private_message(user_id, receiver, content);
             }

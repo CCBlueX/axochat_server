@@ -64,6 +64,10 @@ pub struct MsgConfig {
         value_parser = humantime::parse_duration
     )]
     pub count_duration: Duration,
+
+    /// Service API roles that may use color codes and emoji and get highlighted messages.
+    #[arg(long = "perk-roles", env = "PERK_ROLES", value_delimiter = ',', default_value = "premium")]
+    pub perk_roles: Vec<String>,
 }
 
 #[derive(Args, Clone)]

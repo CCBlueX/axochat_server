@@ -70,6 +70,13 @@ pub enum ClientPacket {
     Blocks {
         users: Vec<UserRef>,
     },
+    ChatMessage {
+        channel: String,
+        id: u64,
+        time: i64,
+        author: Author,
+        content: String,
+    },
 }
 
 #[derive(Serialize, Clone)]
@@ -197,6 +204,7 @@ pub enum ServerPacket {
     },
     Friend { action: FriendAction, user: String },
     Block { user: String, blocked: bool },
+    ChatMessage { channel: String, content: String },
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]

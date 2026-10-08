@@ -1,3 +1,4 @@
+mod channel;
 mod connect;
 mod handler;
 mod id;
@@ -9,6 +10,7 @@ pub use id::*;
 pub use session::Frame;
 
 use packet::*;
+use channel::Channel;
 use social::Social;
 
 use crate::api::{Api, RoleDefinition};
@@ -26,7 +28,7 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use rand::{rngs::SysRng, SeedableRng};
 use rand_hc::Hc128Rng;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -38,6 +40,7 @@ const MAX_FRAME_SIZE: usize = 64 * 1024;
 const CONCURRENT_LOGINS: usize = 64;
 const ROLE_REFRESH: Duration = Duration::from_secs(600);
 const MAINTENANCE: Duration = Duration::from_secs(3600);
+const HISTORY: usize = 1000;
 
 pub async fn chat_route(
     req: HttpRequest,
@@ -111,6 +114,8 @@ pub struct ChatServer {
     config: Config,
 
     current_internal_user_id: u64,
+    history: VecDeque<Recorded>,
+    next_message_id: u64,
 }
 
 impl ChatServer {
@@ -136,6 +141,8 @@ impl ChatServer {
             config,
 
             current_internal_user_id: 0,
+            history: VecDeque::with_capacity(HISTORY),
+            next_message_id: 1,
         }
     }
 
@@ -305,6 +312,14 @@ impl ChatServer {
             .is_some_and(|online| self.has_staff_role(&online.roles))
     }
 
+    fn has_perks(&self, user: UserId) -> bool {
+        self.is_staff(user)
+            || self
+                .users
+                .get(&user)
+                .is_some_and(|online| online.roles.iter().any(|role| self.config.message.perk_roles.contains(role)))
+    }
+
     fn has_staff_role(&self, roles: &[String]) -> bool {
         roles
             .iter()
@@ -344,7 +359,7 @@ impl ChatServer {
         Author {
             user: self.user_ref(user),
             roles,
-            highlight: false,
+            highlight: self.has_perks(user),
         }
     }
 }
@@ -412,4 +427,14 @@ struct ServerPacketId {
 struct Malformed {
     user_id: InternalId,
     error: String,
+}
+
+struct Recorded {
+    id: u64,
+    channel: Channel,
+    author: UserId,
+    content: String,
+    time: i64,
+    /// `None` for public channels.
+    audience: Option<Vec<UserId>>,
 }

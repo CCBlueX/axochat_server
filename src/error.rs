@@ -91,6 +91,7 @@ pub enum ClientError {
     NotFriends,
     NoInvite,
     RequestsDisabled,
+    UnknownChannel,
 }
 
 impl ClientError {
@@ -120,6 +121,7 @@ impl ClientError {
             NotFriends => "NotFriends",
             NoInvite => "NoInvite",
             RequestsDisabled => "RequestsDisabled",
+            UnknownChannel => "UnknownChannel",
         }
     }
 
