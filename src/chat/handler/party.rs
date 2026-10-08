@@ -3,7 +3,7 @@ use crate::chat::party::{Change, PartyId};
 use crate::chat::world::{contradicts_seed, relation, server_key, Location, Player, Relation};
 use crate::chat::{
     new_id, now_ms, Channel, ChatServer, ClientPacket, Connection, Frame, InternalId, MemberState, PartyAction,
-    PartyMemberView, PartyView, Position, Protocol, UserId, UserRef, World,
+    PartyMemberView, PartyView, Position, Protocol, Scope, UserId, World,
 };
 use crate::error::ClientError;
 use log::*;
@@ -19,23 +19,25 @@ const MAX_AGE: i64 = 1 << 47;
 
 impl ChatServer {
     pub(super) fn handle_party(&mut self, user_id: InternalId, action: PartyAction, ctx: &mut Context<Self>) {
-        let Some(user) = self.acting_user(user_id) else { return };
+        let Some(user) = self.account_user(user_id) else { return };
         let now = now_ms();
         match action {
-            PartyAction::Invite { user: query } => self.with_online_user(ctx, user_id, query, move |actor, target| {
-                // an invite to someone who blocked the inviter vanishes
-                if actor.social.has_blocked(target, user) {
-                    return;
-                }
+            PartyAction::Invite { user: query } => self.resolve_user(ctx, query, Scope::Accounts, move |actor, _ctx, resolved| {
+                // an invite to a name nobody has, to someone offline or to someone who blocked the inviter vanishes
+                let target = resolved
+                    .map(|resolved| resolved.identity.id)
+                    .filter(|target| actor.users.contains_key(target) && !actor.social.has_blocked(*target, user));
                 let new_party = new_id(&mut actor.rng);
                 match actor.parties.invite(user, target, new_party, now) {
                     Ok(party) => {
-                        let invite = ClientPacket::PartyInvite {
-                            party,
-                            from: actor.user_ref(user),
-                            expires: now + crate::chat::party::INVITE_TIME,
-                        };
-                        actor.send_user_v2(target, invite);
+                        if let Some(target) = target {
+                            let invite = ClientPacket::PartyInvite {
+                                party,
+                                from: actor.user_ref(user),
+                                expires: now + crate::chat::party::INVITE_TIME,
+                            };
+                            actor.send_user_v2(target, invite);
+                        }
                         actor.refresh_party(user);
                     }
                     Err(error) => actor.send_error(user_id, error),
@@ -61,19 +63,19 @@ impl ChatServer {
                 let result = self.parties.disband(user);
                 self.party_result(user_id, result);
             }
-            PartyAction::Kick { user: query } => self.with_member(ctx, user_id, user, query, move |actor, target| {
+            PartyAction::Kick { user: query } => self.with_member(user_id, user, query, move |actor, target| {
                 let result = actor.parties.kick(user, target);
                 actor.party_result(user_id, result);
             }),
-            PartyAction::Promote { user: query, admin } => self.with_member(ctx, user_id, user, query, move |actor, target| {
+            PartyAction::Promote { user: query, admin } => self.with_member(user_id, user, query, move |actor, target| {
                 let result = actor.parties.promote(user, target, admin);
                 actor.party_updated(user_id, result);
             }),
-            PartyAction::Transfer { user: query } => self.with_member(ctx, user_id, user, query, move |actor, target| {
+            PartyAction::Transfer { user: query } => self.with_member(user_id, user, query, move |actor, target| {
                 let result = actor.parties.transfer(user, target);
                 actor.party_updated(user_id, result);
             }),
-            PartyAction::Mute { user: query, muted } => self.with_member(ctx, user_id, user, query, move |actor, target| {
+            PartyAction::Mute { user: query, muted } => self.with_member(user_id, user, query, move |actor, target| {
                 let result = actor.parties.mute(user, target, muted);
                 actor.party_updated(user_id, result);
             }),
@@ -89,35 +91,23 @@ impl ChatServer {
         }
     }
 
-    /// Resolves an online user for an invite.
-    fn with_online_user<F>(&mut self, ctx: &mut Context<Self>, user_id: InternalId, query: String, then: F)
+    fn with_member<F>(&mut self, user_id: InternalId, user: UserId, query: String, then: F)
     where
-        F: FnOnce(&mut ChatServer, UserId) + 'static,
+        F: FnOnce(&mut ChatServer, UserId),
     {
-        self.resolve_user(ctx, query.clone(), move |actor, _ctx, resolved| {
-            match resolved.map(|resolved| resolved.identity.id).filter(|target| actor.users.contains_key(target)) {
-                Some(target) => then(actor, target),
-                None => {
-                    actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, query));
-                }
-            }
-        });
-    }
-
-    fn with_member<F>(&mut self, ctx: &mut Context<Self>, user_id: InternalId, user: UserId, query: String, then: F)
-    where
-        F: FnOnce(&mut ChatServer, UserId) + 'static,
-    {
-        let member = self.parties.of(user).and_then(|party| {
-            party.users().find(|member| {
-                member.to_string() == query
-                    || self.directory.get(member).is_some_and(|identity| identity.name.eq_ignore_ascii_case(&query))
-            })
+        let Some(party) = self.parties.of(user) else {
+            self.send_error(user_id, ClientError::NotInParty);
+            return;
+        };
+        let member = party.users().find(|member| {
+            member.to_string() == query
+                || self.directory.get(member).is_some_and(|identity| identity.name.eq_ignore_ascii_case(&query))
         });
         match member {
             Some(member) => then(self, member),
-            None if self.parties.of(user).is_none() => self.send_error(user_id, ClientError::NotInParty),
-            None => self.with_online_user(ctx, user_id, query, then),
+            None => {
+                self.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, query));
+            }
         }
     }
 
@@ -184,7 +174,7 @@ impl ChatServer {
             .filter_map(|member| {
                 let location = self.game_location(member.user);
                 Some(PartyMemberView {
-                    user: UserRef::from(self.directory.get(&member.user)?),
+                    user: self.known_ref(member.user)?,
                     role: member.role,
                     online: self.users.contains_key(&member.user),
                     muted: member.muted,

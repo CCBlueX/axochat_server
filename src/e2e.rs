@@ -212,15 +212,43 @@ async fn protocol() {
     assert_eq!(v2["c"]["channel"], "global");
     assert!(v2["c"]["id"].is_u64());
 
-    // a v1 private message arrives on v2 as a direct channel
+    // direct messages are between accounts
     old.send(json!({ "m": "PrivateMessage", "c": { "receiver": format!("alice{}", run), "content": "psst" } })).await;
-    let direct = alice.next("ChatMessage").await;
-    assert_eq!(direct["c"]["channel"], format!("user/{}", direct["c"]["author"]["id"].as_str().unwrap()));
-    assert_eq!(direct["c"]["author"]["kind"], "mojang");
-
-    // a party in the same world
+    assert_eq!(old.next_any().await, json!({ "m": "Error", "c": { "message": "PrivateMessageNotAccepted" } }));
     let mut bob = Client::connect(&url).await;
     bob.account(&format!("bob-{}", run), &format!("Bob{}", run), "").await;
+    bob.send(json!({ "m": "ChatMessage", "c": { "channel": "user/notch", "content": "psst" } })).await;
+    assert_eq!(bob.next("Error").await["c"]["message"], "PrivateMessageNotAccepted");
+    bob.send(json!({ "m": "ChatMessage", "c": { "channel": format!("user/alice{}", run), "content": "hi alice" } })).await;
+    let direct = alice.next("ChatMessage").await;
+    assert_eq!(direct["c"]["channel"], format!("user/{}", direct["c"]["author"]["id"].as_str().unwrap()));
+    assert_eq!(direct["c"]["author"]["minecraft"], Value::Null);
+    bob.next("ChatMessage").await;
+
+    // an account session proves the Minecraft account it plays on
+    alice.send(json!({ "m": "RequestMojangInfo" })).await;
+    alice.next("MojangInfo").await;
+    let player = format!("alice_mc{}", run);
+    alice.send(json!({ "m": "LoginMojang", "c": { "name": player, "uuid": uuid_of(&player), "allow_messages": true } }))
+        .await;
+    assert_eq!(alice.next("Success").await["c"]["reason"], "Minecraft");
+    alice.send(json!({ "m": "ChatMessage", "c": { "channel": format!("user/bob{}", run), "content": "hey" } })).await;
+    let author = bob.next("ChatMessage").await["c"]["author"].clone();
+    assert_eq!(author["name"], format!("Alice{}", run));
+    assert_eq!(author["minecraft"]["name"], player);
+    assert_eq!(author["uuid"], author["minecraft"]["uuid"]);
+
+    // an invite to a name nobody has looks like any other
+    alice.send(json!({ "m": "Party", "c": { "action": "invite", "user": format!("Nobody{}", run) } })).await;
+    loop {
+        let packet = alice.next_any().await;
+        assert_ne!(packet["m"], "Error");
+        if packet["m"] == "Party" {
+            break;
+        }
+    }
+
+    // a party in the same world
     alice.send(json!({ "m": "Party", "c": { "action": "invite", "user": format!("Bob{}", run) } })).await;
     let invite = bob.next("PartyInvite").await;
     bob.send(json!({ "m": "Party", "c": { "action": "accept", "party": invite["c"]["party"] } })).await;

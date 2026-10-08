@@ -1,5 +1,6 @@
 use crate::chat::{
-    now_ms, Channel, ChatServer, ClientPacket, Connection, Frame, InternalId, Protocol, Recorded, UserId, HISTORY,
+    now_ms, Channel, ChatServer, ClientPacket, Connection, Frame, InternalId, Kind as IdentityKind, Protocol, Recorded,
+    Scope, UserId, HISTORY,
 };
 use crate::entity::punishment::Kind;
 use crate::error::*;
@@ -62,22 +63,24 @@ impl ChatServer {
 
     fn send_direct(&mut self, user_id: InternalId, user: UserId, receiver: String, content: String) {
         let sender_protocol = self.connections.get(&user_id).map_or(Protocol::V1, |connection| connection.protocol);
-        let target = Uuid::parse_str(&receiver)
-            .ok()
-            .filter(|id| self.users.contains_key(id))
-            .or_else(|| self.find_online(&receiver));
-        let Some(target) = target else {
-            // v1 never said whether the receiver exists
-            if sender_protocol >= Protocol::V2 {
-                self.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, receiver));
-            }
-            return;
-        };
-        // a block looks like messages not being accepted
-        if self.social.has_blocked(target, user) {
-            self.send_error(user_id, ClientError::PrivateMessageNotAccepted);
+        if self.identity(user).kind != IdentityKind::Account {
+            let error = match sender_protocol {
+                Protocol::V1 => ClientError::PrivateMessageNotAccepted,
+                Protocol::V2 => ClientError::AccountRequired,
+            };
+            self.send_error(user_id, error);
             return;
         }
+        // an unknown name and a block both look like messages not being accepted
+        let target = Uuid::parse_str(&receiver)
+            .ok()
+            .filter(|id| self.users.contains_key(id) && self.identity(*id).kind == IdentityKind::Account)
+            .or_else(|| self.find_online(&receiver, Scope::Accounts))
+            .filter(|target| !self.social.has_blocked(*target, user));
+        let Some(target) = target else {
+            self.send_error(user_id, ClientError::PrivateMessageNotAccepted);
+            return;
+        };
 
         let message = self.record(Channel::direct(target), user, &content, Some(vec![user, target]));
         let v1 = ClientPacket::PrivateMessage {

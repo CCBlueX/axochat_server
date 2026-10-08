@@ -292,6 +292,12 @@ sequenceDiagram
     end
     Server->>Client: Welcome, Settings, Friends, Blocks, Groups, Party
     Server->>Client: Success (Login)
+    opt LiquidBounce Account playing on a Minecraft account
+        Client->>Server: RequestMojangInfo
+        Server->>Client: MojangInfo
+        Client->>Server: LoginMojang
+        Server->>Client: Success (Minecraft)
+    end
 ```
 
 The server pings every 30 seconds and closes a v2 connection that has not
@@ -302,19 +308,31 @@ A user is either a LiquidBounce Account (`account`) or a Minecraft account
 verified through the session server (`mojang`). A Minecraft login whose UUID is
 linked to a LiquidBounce Account logs in as that account.
 
+Direct messages, friends, parties and groups are between LiquidBounce Accounts
+on both sides; a Minecraft account gets `AccountRequired`. Everyone chats in
+`global`, blocks and reports.
+
+After logging in, an account session can prove the Minecraft account it plays
+on with `RequestMojangInfo` and `LoginMojang`, answered by `Success`
+(`Minecraft`). Others then see that account as `minecraft`.
+
 Every user has a public `id`. Wherever a packet takes a `user`, it accepts an
-`id` or a name. Names resolve online users before offline ones, and Minecraft
-accounts before LiquidBounce Accounts of the same name.
+`id` or a name. Names resolve online users before offline ones; where only
+accounts count, only account names do. The server answers the same whether
+an account exists or not: invites and friend requests to unknown names vanish,
+direct messages to them are not accepted and reports succeed.
 
 ### UserRef
 - `uuid` is the Minecraft UUID used for the head, the nil UUID if unknown.
+- `minecraft` is the Minecraft account an online account proved it plays on.
 
 ```json
 {
     "id": "0192f0e4-6b1e-7c4d-9a51-2f8f3c1d7a10",
     "kind": "account",
-    "name": "Izuna",
-    "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5"
+    "name": "1zun4",
+    "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5",
+    "minecraft": { "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5", "name": "Izuna" }
 }
 ```
 
@@ -326,8 +344,9 @@ A [UserRef](#userref) with the user's roles, staff roles first.
 {
     "id": "0192f0e4-6b1e-7c4d-9a51-2f8f3c1d7a10",
     "kind": "account",
-    "name": "Izuna",
+    "name": "1zun4",
     "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5",
+    "minecraft": { "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5", "name": "Izuna" },
     "roles": [{ "id": "premium", "name": "Premium", "staff": false }],
     "highlight": true
 }
@@ -348,7 +367,7 @@ Donators and staff may use `§` color and format codes (except `§k`) and emoji.
 v2 adds a `detail` to [Error](#error) where it helps, and these codes:
 `UnknownUser`, `UnknownChannel`, `UnknownGroup`, `Muted`, `NotInParty`,
 `AlreadyInParty`, `PartyFull`, `PartyLocked`, `NoInvite`, `NotFriends`,
-`AlreadyFriends`, `RequestsDisabled`, `GroupFull`, `InvalidName`, `TooLarge`,
+`AlreadyFriends`, `AccountRequired`, `GroupFull`, `InvalidName`, `TooLarge`,
 and `InvalidPacket` for packets the server cannot decode.
 
 ```json
@@ -424,7 +443,7 @@ The full friend list, sent on login and on every change.
     "m": "Friends",
     "c": {
         "friends": [
-            { "user": { "id": "...", "kind": "mojang", "name": "Notch", "uuid": "..." }, "since": 1791446400000, "online": true, "server": "hypixel.net" }
+            { "user": { "id": "...", "kind": "account", "name": "Notch", "uuid": "...", "minecraft": null }, "since": 1791446400000, "online": true, "server": "hypixel.net" }
         ],
         "incoming": [{ "id": "...", "kind": "account", "name": "jeb_", "uuid": "..." }],
         "outgoing": []
@@ -589,7 +608,7 @@ unresolved reports. `ReportCreated` carries a single new `report`.
 }
 ```
 
-`Success` gains the reasons `Report`, `Punish`, `Pardon` and `Resolve`.
+`Success` gains the reasons `Report`, `Punish`, `Pardon`, `Resolve` and `Minecraft`.
 
 ## Server
 

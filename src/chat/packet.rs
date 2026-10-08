@@ -215,6 +215,8 @@ pub struct UserRef {
     pub kind: Kind,
     pub name: String,
     pub uuid: Uuid,
+    /// The Minecraft account an online LiquidBounce Account proved it plays on.
+    pub minecraft: Option<Player>,
 }
 
 impl From<&Identity> for UserRef {
@@ -224,6 +226,7 @@ impl From<&Identity> for UserRef {
             kind: identity.kind,
             name: identity.name.clone(),
             uuid: identity.uuid,
+            minecraft: None,
         }
     }
 }
@@ -413,6 +416,8 @@ pub enum SuccessReason {
     Pardon,
     Report,
     Resolve,
+    /// A LiquidBounce Account session proved the Minecraft account it plays on.
+    Minecraft,
 }
 
 #[cfg(test)]

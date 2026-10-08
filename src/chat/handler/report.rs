@@ -1,6 +1,6 @@
 use crate::chat::{
-    new_id, now_ms, ChatServer, ClientPacket, Identity, InternalId, Kind, RecentReport, ReportView, SuccessReason, UserId,
-    UserRef,
+    new_id, now_ms, ChatServer, ClientPacket, Identity, InternalId, Kind, RecentReport, ReportView, Scope, SuccessReason,
+    UserId,
 };
 use crate::entity::{punishment, report};
 use crate::error::ClientError;
@@ -33,9 +33,9 @@ impl ChatServer {
         let Some(reporter) = self.acting_user(user_id) else { return };
         let reason: String = reason.chars().take(MAX_REASON).collect();
 
-        self.resolve_user(ctx, query.clone(), move |actor, _ctx, resolved| {
+        self.resolve_user(ctx, query, Scope::Anyone, move |actor, _ctx, resolved| {
             let Some(target) = resolved else {
-                actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, query));
+                actor.send(user_id, ClientPacket::Success { reason: SuccessReason::Report });
                 return;
             };
             let target = target.identity.id;
@@ -145,8 +145,8 @@ impl ChatServer {
     fn report_view(&self, report: &report::Model) -> Option<ReportView> {
         Some(ReportView {
             id: report.id,
-            reporter: UserRef::from(self.directory.get(&report.reporter_id)?),
-            target: UserRef::from(self.directory.get(&report.target_id)?),
+            reporter: self.known_ref(report.reporter_id)?,
+            target: self.known_ref(report.target_id)?,
             channel: report.channel.clone(),
             message: report.message_id.map(|id| id as u64),
             content: report.content.clone(),

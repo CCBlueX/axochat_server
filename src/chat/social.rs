@@ -119,9 +119,10 @@ impl Social {
             self.befriend(&mut writes, user, target, at);
             return Ok((Requested::Friends, writes));
         }
-        // a request towards someone who blocked the sender is kept, but never shown to them
+        // a request towards someone who blocked the sender is kept, but never shown to them;
+        // one towards someone who takes none vanishes, like one towards a name nobody has
         if !accepts && !self.has_blocked(target, user) {
-            return Err(ClientError::RequestsDisabled);
+            return Ok((Requested::Pending, Vec::new()));
         }
         self.write_set(&mut writes, user, target, Kind::Request, at);
         Ok((Requested::Pending, writes))
@@ -224,7 +225,8 @@ mod tests {
     #[test]
     fn requests_disabled_and_declined() {
         let mut social = Social::default();
-        assert_eq!(social.request(A, B, false, 1).unwrap_err(), ClientError::RequestsDisabled);
+        assert!(social.request(A, B, false, 1).unwrap().1.is_empty());
+        assert_eq!(social.incoming_requests(B).count(), 0);
         social.request(A, C, true, 1).unwrap();
         assert_eq!(social.decline(C, A).unwrap().len(), 1);
         assert_eq!(social.decline(C, A).unwrap_err(), ClientError::NoInvite);

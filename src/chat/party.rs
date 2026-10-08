@@ -133,8 +133,8 @@ impl Parties {
     /// Founds a party first if `user` has none. Without a target, everything happens but the invite,
     /// so it looks the same to `user`. Returns whether the target is to be told; a pending invite
     /// is not repeated.
-    pub fn invite(&mut self, user: UserId, target: UserId, new_id: PartyId, now: i64) -> Result<PartyId, ClientError> {
-        if user == target {
+    pub fn invite(&mut self, user: UserId, target: Option<UserId>, new_id: PartyId, now: i64) -> Result<PartyId, ClientError> {
+        if target == Some(user) {
             return Err(ClientError::NotPermitted);
         }
         if !self.member_of.contains_key(&user) {
@@ -162,17 +162,19 @@ impl Parties {
         if party.locked {
             return Err(ClientError::PartyLocked);
         }
-        if party.member(target).is_some() {
+        if target.is_some_and(|target| party.member(target).is_some()) {
             return Err(ClientError::AlreadyInParty);
         }
         if party.members.len() >= MAX_MEMBERS {
             return Err(ClientError::PartyFull);
         }
-        party.invites.retain(|invite| invite.user != target);
-        party.invites.push(Invite {
-            user: target,
-            expires: now + INVITE_TIME,
-        });
+        if let Some(target) = target {
+            party.invites.retain(|invite| invite.user != target);
+            party.invites.push(Invite {
+                user: target,
+                expires: now + INVITE_TIME,
+            });
+        }
         Ok(party.id)
     }
 
@@ -350,8 +352,8 @@ mod tests {
 
     fn party() -> Parties {
         let mut parties = Parties::default();
-        parties.invite(LEADER, ADMIN, PARTY, 0).unwrap();
-        parties.invite(LEADER, MEMBER, Uuid::from_u128(101), 0).unwrap();
+        parties.invite(LEADER, Some(ADMIN), PARTY, 0).unwrap();
+        parties.invite(LEADER, Some(MEMBER), Uuid::from_u128(101), 0).unwrap();
         parties.accept(ADMIN, PARTY, 1).unwrap();
         parties.accept(MEMBER, PARTY, 2).unwrap();
         parties.promote(LEADER, ADMIN, true).unwrap();
@@ -362,13 +364,13 @@ mod tests {
     fn invites() {
         let mut parties = party();
         let guest = Uuid::from_u128(9);
-        assert_eq!(parties.invite(MEMBER, guest, PARTY, 3).unwrap_err(), ClientError::NotPermitted);
-        assert_eq!(parties.invite(ADMIN, guest, PARTY, 3).unwrap(), PARTY);
+        assert_eq!(parties.invite(MEMBER, Some(guest), PARTY, 3).unwrap_err(), ClientError::NotPermitted);
+        assert_eq!(parties.invite(ADMIN, Some(guest), PARTY, 3).unwrap(), PARTY);
         assert_eq!(parties.accept(guest, PARTY, 3 + INVITE_TIME).unwrap_err(), ClientError::NoInvite, "expired");
-        parties.invite(ADMIN, guest, PARTY, 4).unwrap();
+        parties.invite(ADMIN, Some(guest), PARTY, 4).unwrap();
         parties.lock(LEADER, true).unwrap();
         assert_eq!(parties.accept(guest, PARTY, 5).unwrap_err(), ClientError::NoInvite, "locking drops invites");
-        assert_eq!(parties.invite(LEADER, guest, PARTY, 6).unwrap_err(), ClientError::PartyLocked);
+        assert_eq!(parties.invite(LEADER, Some(guest), PARTY, 6).unwrap_err(), ClientError::PartyLocked);
         assert_eq!(parties.accept(MEMBER, PARTY, 6).unwrap_err(), ClientError::AlreadyInParty);
     }
 
@@ -378,11 +380,11 @@ mod tests {
         parties.lock(LEADER, false).unwrap();
         for i in 10..15 {
             let user = Uuid::from_u128(i);
-            parties.invite(LEADER, user, PARTY, 0).unwrap();
+            parties.invite(LEADER, Some(user), PARTY, 0).unwrap();
             parties.accept(user, PARTY, 1).unwrap();
         }
         assert_eq!(parties.of(LEADER).unwrap().members.len(), MAX_MEMBERS);
-        assert_eq!(parties.invite(LEADER, Uuid::from_u128(20), PARTY, 0).unwrap_err(), ClientError::PartyFull);
+        assert_eq!(parties.invite(LEADER, Some(Uuid::from_u128(20)), PARTY, 0).unwrap_err(), ClientError::PartyFull);
     }
 
     #[test]

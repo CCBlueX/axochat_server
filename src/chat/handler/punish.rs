@@ -1,6 +1,6 @@
 use crate::chat::{
-    new_id, now_ms, ChatServer, ClientPacket, Identity, InternalId, Login, PunishmentView, Resolved, SuccessReason,
-    UserId, UserRef,
+    new_id, now_ms, ChatServer, ClientPacket, Identity, InternalId, Login, PunishmentView, Resolved, Scope,
+    SuccessReason, UserId, UserRef,
 };
 use crate::entity::punishment::Kind;
 use crate::error::ClientError;
@@ -116,7 +116,7 @@ impl ChatServer {
         let expires_at = duration.map(|seconds| created_at.saturating_add((seconds as i64).saturating_mul(1000)));
 
         match (user, ip) {
-            (Some(query), _) => self.resolve_user(ctx, query.clone(), move |actor, _ctx, resolved| {
+            (Some(query), _) => self.resolve_user(ctx, query.clone(), Scope::Anyone, move |actor, _ctx, resolved| {
                 let Some(Resolved { identity, last_ip, .. }) = resolved else {
                     actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, query));
                     return;
@@ -174,7 +174,7 @@ impl ChatServer {
             }
         };
         match (user, ip) {
-            (Some(query), _) => self.resolve_user(ctx, query.clone(), move |actor, _ctx, resolved| {
+            (Some(query), _) => self.resolve_user(ctx, query.clone(), Scope::Anyone, move |actor, _ctx, resolved| {
                 let Some(resolved) = resolved else {
                     actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, query));
                     return;
@@ -199,7 +199,7 @@ impl ChatServer {
             return;
         }
 
-        self.resolve_user(ctx, user.clone(), move |actor, _ctx, resolved| {
+        self.resolve_user(ctx, user.clone(), Scope::Anyone, move |actor, _ctx, resolved| {
             let Some(resolved) = resolved else {
                 actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, user));
                 return;
@@ -213,10 +213,7 @@ impl ChatServer {
                     kind: punishment.kind,
                     ip: punishment.ip.map(|ip| ip.to_string()),
                     reason: punishment.reason.clone(),
-                    issued_by: punishment
-                        .issued_by
-                        .and_then(|issuer| actor.directory.get(&issuer))
-                        .map(UserRef::from),
+                    issued_by: punishment.issued_by.and_then(|issuer| actor.known_ref(issuer)),
                     created: punishment.created_at,
                     expires: punishment.expires_at,
                 })
@@ -224,7 +221,7 @@ impl ChatServer {
             actor.send_v2(
                 user_id,
                 ClientPacket::Punishments {
-                    user: UserRef::from(&resolved.identity),
+                    user: actor.known_ref(resolved.identity.id).unwrap_or_else(|| UserRef::from(&resolved.identity)),
                     punishments,
                 },
             );

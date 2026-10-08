@@ -331,21 +331,27 @@ impl Handler<LoadPunishments> for Store {
 /// A user by public id or name; of several with the name, the one seen last.
 #[derive(Message)]
 #[rtype(result = "Result<Option<user::Model>, DbErr>")]
-pub struct FindUser(pub String);
+pub struct FindUser {
+    pub query: String,
+    /// Only LiquidBounce Accounts.
+    pub accounts: bool,
+}
 
 impl Handler<FindUser> for Store {
     type Result = AtomicResponse<Self, Result<Option<user::Model>, DbErr>>;
 
-    fn handle(&mut self, FindUser(query): FindUser, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, FindUser { query, accounts }: FindUser, _ctx: &mut Context<Self>) -> Self::Result {
         atomic!(self, db => {
             if let Ok(id) = Uuid::parse_str(&query) {
                 if let Some(user) = user::Entity::find_by_id(id).one(&db).await? {
-                    return Ok(Some(user));
+                    return Ok(Some(user).filter(|user| !accounts || user.account.is_some()));
                 }
             }
-            user::Entity::find()
-                .filter(user::Column::Name.eq(query))
-                .order_by_desc(user::Column::LastSeenAt)
+            let mut find = user::Entity::find().filter(user::Column::Name.eq(query));
+            if accounts {
+                find = find.filter(user::Column::Account.is_not_null());
+            }
+            find.order_by_desc(user::Column::LastSeenAt)
                 .one(&db)
                 .await
         })

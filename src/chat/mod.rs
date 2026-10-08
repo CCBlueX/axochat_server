@@ -16,7 +16,7 @@ use packet::*;
 use channel::Channel;
 use group::{GroupId, Groups};
 use party::Parties;
-use world::Location;
+use world::{Location, Player};
 use social::Social;
 
 use crate::api::{Api, RoleDefinition};
@@ -191,13 +191,13 @@ impl ChatServer {
         self.directory.get(&user).expect("online users are in the directory")
     }
 
-    /// Resolves the name of an online user the way v1 private messages address them:
-    /// exact spelling before case-insensitive, Minecraft accounts before LiquidBounce Accounts.
-    fn find_online(&self, name: &str) -> Option<UserId> {
+    /// Resolves the name of an online user: exact spelling before case-insensitive,
+    /// Minecraft accounts before LiquidBounce Accounts.
+    fn find_online(&self, name: &str, scope: Scope) -> Option<UserId> {
         self.users
             .keys()
             .filter_map(|id| self.directory.get(id))
-            .filter(|identity| identity.name.eq_ignore_ascii_case(name))
+            .filter(|identity| identity.name.eq_ignore_ascii_case(name) && scope.includes(identity.kind))
             .min_by_key(|identity| (identity.name != name, identity.kind != Kind::Mojang))
             .map(|identity| identity.id)
     }
@@ -221,14 +221,14 @@ impl ChatServer {
     }
 
     /// Resolves a public id or name: online users directly, everyone else from the database.
-    fn resolve_user<F>(&mut self, ctx: &mut Context<Self>, query: String, then: F)
+    fn resolve_user<F>(&mut self, ctx: &mut Context<Self>, query: String, scope: Scope, then: F)
     where
         F: FnOnce(&mut ChatServer, &mut Context<ChatServer>, Option<Resolved>) + 'static,
     {
         let online = Uuid::parse_str(&query)
             .ok()
-            .filter(|id| self.users.contains_key(id))
-            .or_else(|| self.find_online(&query));
+            .filter(|id| self.users.contains_key(id) && scope.includes(self.identity(*id).kind))
+            .or_else(|| self.find_online(&query, scope));
         if let Some(user) = online {
             let resolved = Resolved {
                 identity: self.identity(user).clone(),
@@ -240,7 +240,8 @@ impl ChatServer {
         }
 
         let store = self.store.clone();
-        ctx.spawn(async move { store.send(FindUser(query)).await }.into_actor(self).map(
+        let accounts = scope == Scope::Accounts;
+        ctx.spawn(async move { store.send(FindUser { query, accounts }).await }.into_actor(self).map(
             move |result, actor, ctx| {
                 let resolved = match result {
                     Ok(Ok(model)) => model.map(|model| {
@@ -292,6 +293,19 @@ impl ChatServer {
     fn game_location(&self, user: UserId) -> Option<&Location> {
         let game = self.users.get(&user)?.game?;
         self.connections.get(&game)?.location.as_ref()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Scope {
+    /// Messages, friends, parties and groups are between LiquidBounce Accounts.
+    Accounts,
+    Anyone,
+}
+
+impl Scope {
+    fn includes(self, kind: Kind) -> bool {
+        self == Scope::Anyone || kind == Kind::Account
     }
 }
 
@@ -366,7 +380,19 @@ impl ChatServer {
     }
 
     fn user_ref(&self, user: UserId) -> UserRef {
-        UserRef::from(self.identity(user))
+        self.known_ref(user).expect("online users are in the directory")
+    }
+
+    /// The head follows the Minecraft account they play on.
+    fn known_ref(&self, user: UserId) -> Option<UserRef> {
+        let mut reference = UserRef::from(self.directory.get(&user)?);
+        reference.minecraft = self
+            .online_connections(user)
+            .find_map(|(_, connection)| connection.minecraft.clone());
+        if let Some(minecraft) = &reference.minecraft {
+            reference.uuid = minecraft.uuid;
+        }
+        Some(reference)
     }
 
     fn author(&self, user: UserId) -> Author {
@@ -424,6 +450,7 @@ struct Connection {
     login: Login,
     allow_messages: bool,
     server_chat: bool,
+    minecraft: Option<Player>,
     location: Option<Location>,
     limits: StateLimits,
 }

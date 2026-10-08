@@ -33,6 +33,7 @@ impl Handler<Connect> for ChatServer {
                 login: Login::Anonymous,
                 allow_messages: false,
                 server_chat: false,
+                minecraft: None,
                 location: None,
                 limits: StateLimits::default(),
             },

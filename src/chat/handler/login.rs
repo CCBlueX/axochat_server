@@ -1,3 +1,4 @@
+use crate::chat::world::Player;
 use crate::chat::{new_id, now_ms, ChatServer, ClientPacket, Identity, InternalId, Login, OnlineUser, SuccessReason};
 use crate::entity::{punishment::Kind, user};
 use crate::error::ClientError;
@@ -15,6 +16,7 @@ const ACTION_RATE: f64 = 2.0;
 pub(super) struct Verified {
     pub model: user::Model,
     pub roles: Vec<String>,
+    pub minecraft: Option<Player>,
 }
 
 /// Taken before the login goes async.
@@ -91,6 +93,7 @@ impl ChatServer {
         connection.login = Login::User(identity.id);
         connection.allow_messages = allow_messages;
         connection.session_hash = None;
+        connection.minecraft = verified.minecraft;
 
         let user = identity.id;
         let came_online = !self.users.contains_key(&user);

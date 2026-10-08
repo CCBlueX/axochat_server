@@ -1,4 +1,7 @@
-use crate::chat::{now_ms, ChatServer, ClientPacket, FriendAction, FriendView, InternalId, SettingsView, UserId, UserRef};
+use crate::chat::{
+    now_ms, ChatServer, ClientPacket, FriendAction, FriendView, InternalId, Kind as IdentityKind, Scope, SettingsView, UserId,
+    UserRef,
+};
 use crate::error::ClientError;
 use crate::entity::relation::Kind;
 use crate::store::Write;
@@ -12,6 +15,15 @@ impl ChatServer {
         let online = self.users.get_mut(&user)?;
         if !online.actions.allow() {
             self.send_error(user_id, ClientError::RateLimited);
+            return None;
+        }
+        Some(user)
+    }
+
+    pub(super) fn account_user(&mut self, user_id: InternalId) -> Option<UserId> {
+        let user = self.acting_user(user_id)?;
+        if self.identity(user).kind != IdentityKind::Account {
+            self.send_error(user_id, ClientError::AccountRequired);
             return None;
         }
         Some(user)
@@ -64,10 +76,15 @@ impl ChatServer {
     }
 
     pub(super) fn handle_friend(&mut self, user_id: InternalId, action: FriendAction, query: String, ctx: &mut Context<Self>) {
-        let Some(user) = self.acting_user(user_id) else { return };
-        self.resolve_user(ctx, query.clone(), move |actor, _ctx, resolved| {
+        let Some(user) = self.account_user(user_id) else { return };
+        self.resolve_user(ctx, query, Scope::Accounts, move |actor, _ctx, resolved| {
+            // a name nobody has answers like a real account would
             let Some(target) = resolved else {
-                actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, query));
+                match action {
+                    FriendAction::Request => {}
+                    FriendAction::Accept | FriendAction::Decline => actor.send_error(user_id, ClientError::NoInvite),
+                    FriendAction::Remove => actor.send_error(user_id, ClientError::NotFriends),
+                }
                 return;
             };
             let (target_id, now) = (target.identity.id, now_ms());
@@ -93,11 +110,8 @@ impl ChatServer {
 
     pub(super) fn handle_block(&mut self, user_id: InternalId, query: String, blocked: bool, ctx: &mut Context<Self>) {
         let Some(user) = self.acting_user(user_id) else { return };
-        self.resolve_user(ctx, query.clone(), move |actor, _ctx, resolved| {
-            let Some(target) = resolved else {
-                actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, query));
-                return;
-            };
+        self.resolve_user(ctx, query, Scope::Anyone, move |actor, _ctx, resolved| {
+            let Some(target) = resolved else { return };
             let target_id = target.identity.id;
             // the blocked user only hears of it through a friendship or request that disappears
             let target_affected = actor.social.get(user, target_id).is_some_and(|kind| kind != Kind::Block)
@@ -123,7 +137,7 @@ impl ChatServer {
         let refs = |users: Vec<UserId>| -> Vec<UserRef> {
             users
                 .into_iter()
-                .filter_map(|user| self.directory.get(&user).map(UserRef::from))
+                .filter_map(|user| self.known_ref(user))
                 .collect()
         };
         let friends = self
@@ -131,7 +145,7 @@ impl ChatServer {
             .friends(user)
             .filter_map(|(friend, since)| {
                 Some(FriendView {
-                    user: UserRef::from(self.directory.get(&friend)?),
+                    user: self.known_ref(friend)?,
                     since,
                     online: self.users.contains_key(&friend),
                     server: self.visible_server(friend),
@@ -152,7 +166,7 @@ impl ChatServer {
         let users = self
             .social
             .blocked(user)
-            .filter_map(|blocked| self.directory.get(&blocked).map(UserRef::from))
+            .filter_map(|blocked| self.known_ref(blocked))
             .collect();
         let packet = ClientPacket::Blocks { users };
         for (id, _) in self.online_connections(user) {

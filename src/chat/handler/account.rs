@@ -25,7 +25,7 @@ impl ChatServer {
 
                 let request = visit.identify(IdentityKey::Account(account.user_id), account.nickname, account.minecraft_uuid);
                 let model = identify(store, request).await?;
-                Ok(Verified { model, roles: account.roles })
+                Ok(Verified { model, roles: account.roles, minecraft: None })
             }
             .into_actor(self)
             .map(move |result, actor, _ctx| actor.finish_login(user_id, result, allow_messages)),
