@@ -34,6 +34,7 @@ impl ChatServer {
         match channel {
             Channel::Global => self.send_global(user, content),
             Channel::User(receiver) => self.send_direct(user_id, user, receiver, content),
+            Channel::Group(group) => self.send_group_message(user_id, user, group, content),
             channel => {
                 self.send(user_id, ClientPacket::error_with(ClientError::UnknownChannel, channel.to_string()));
             }

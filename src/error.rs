@@ -92,6 +92,9 @@ pub enum ClientError {
     NoInvite,
     RequestsDisabled,
     UnknownChannel,
+    UnknownGroup,
+    GroupFull,
+    InvalidName,
 }
 
 impl ClientError {
@@ -122,6 +125,9 @@ impl ClientError {
             NoInvite => "NoInvite",
             RequestsDisabled => "RequestsDisabled",
             UnknownChannel => "UnknownChannel",
+            UnknownGroup => "UnknownGroup",
+            GroupFull => "GroupFull",
+            InvalidName => "InvalidName",
         }
     }
 

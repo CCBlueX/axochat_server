@@ -1,4 +1,5 @@
 use super::{Frame, Identity, Kind};
+use crate::entity::chat_group_member::Role;
 use crate::entity::punishment;
 use crate::error::ClientError;
 use serde::de::IgnoredAny;
@@ -77,6 +78,24 @@ pub enum ClientPacket {
         author: Author,
         content: String,
     },
+    Groups {
+        groups: Vec<GroupView>,
+    },
+}
+
+#[derive(Serialize, Clone)]
+pub struct GroupView {
+    pub id: Uuid,
+    pub name: String,
+    pub role: Role,
+    pub members: Vec<GroupMemberView>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct GroupMemberView {
+    pub user: UserRef,
+    pub role: Role,
+    pub online: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -205,6 +224,21 @@ pub enum ServerPacket {
     Friend { action: FriendAction, user: String },
     Block { user: String, blocked: bool },
     ChatMessage { channel: String, content: String },
+    Group(GroupAction),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "action", rename_all = "lowercase")]
+pub enum GroupAction {
+    Create { name: String },
+    Rename { group: Uuid, name: String },
+    Invite { group: Uuid, user: String },
+    Accept { group: Uuid },
+    Decline { group: Uuid },
+    Leave { group: Uuid },
+    Kick { group: Uuid, user: String },
+    Promote { group: Uuid, user: String, admin: bool },
+    Delete { group: Uuid },
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]

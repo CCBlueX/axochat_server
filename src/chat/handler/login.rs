@@ -117,6 +117,7 @@ impl ChatServer {
         }
         self.send_friends(user);
         self.send_blocks(user);
+        self.send_groups(user);
         self.send(id, ClientPacket::Success { reason: SuccessReason::Login });
 
         if came_online {

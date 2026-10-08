@@ -1,5 +1,6 @@
 mod channel;
 mod connect;
+mod group;
 mod handler;
 mod id;
 mod packet;
@@ -11,16 +12,17 @@ pub use session::Frame;
 
 use packet::*;
 use channel::Channel;
+use group::{GroupId, Groups};
 use social::Social;
 
 use crate::api::{Api, RoleDefinition};
 use crate::config::Config;
-use crate::entity::{relation, user};
+use crate::entity::user;
 use crate::error::ClientError;
 use crate::ip::RealIp;
 use crate::message::{ActionLimiter, MessageValidator, RateLimiter};
 use crate::moderation::{Moderation, Punishment};
-use crate::store::{FindUser, Persist, Store, Write};
+use crate::store::{FindUser, Persist, State, Store, Write};
 use log::*;
 
 use actix::*;
@@ -108,6 +110,7 @@ pub struct ChatServer {
     /// In the order of the Service API, which is the order prefixes are shown in.
     roles: Vec<RoleDefinition>,
     social: Social,
+    groups: Groups,
     rng: Hc128Rng,
     validator: MessageValidator,
     moderation: Moderation,
@@ -123,18 +126,19 @@ impl ChatServer {
         config: Config,
         store: Addr<Store>,
         punishments: Vec<Punishment>,
-        (relations, related): (Vec<relation::Model>, Vec<user::Model>),
+        state: State,
     ) -> ChatServer {
         ChatServer {
             connections: HashMap::new(),
             users: HashMap::new(),
-            directory: related.iter().map(|model| (model.id, Identity::of(model))).collect(),
+            directory: state.users.iter().map(|model| (model.id, Identity::of(model))).collect(),
 
             store,
             api: Arc::new(Api::new(&config.api)),
             logins: Arc::new(Semaphore::new(CONCURRENT_LOGINS)),
             roles: Vec::new(),
-            social: Social::new(relations),
+            social: Social::new(state.relations),
+            groups: Groups::new(state.groups, state.members),
             rng: Hc128Rng::try_from_rng(&mut SysRng).expect("could not initialize hc128 rng"),
             validator: MessageValidator::new(config.message.clone()),
             moderation: Moderation::new(punishments),

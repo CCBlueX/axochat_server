@@ -2,6 +2,7 @@ mod account;
 mod punish;
 mod social;
 mod count;
+mod group;
 mod hello;
 mod jwt;
 mod login;
@@ -67,6 +68,9 @@ impl Handler<ServerPacketId> for ChatServer {
             }
             ServerPacket::Friend { action, user } => {
                 self.handle_friend(user_id, action, user, ctx);
+            }
+            ServerPacket::Group(action) => {
+                self.handle_group(user_id, action, ctx);
             }
             ServerPacket::Block { user, blocked } => {
                 self.handle_block(user_id, user, blocked, ctx);

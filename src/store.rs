@@ -1,4 +1,4 @@
-use crate::entity::{punishment, relation, user};
+use crate::entity::{chat_group, chat_group_member, punishment, relation, user};
 use log::*;
 
 use actix::prelude::*;
@@ -107,7 +107,7 @@ impl Handler<Identify> for Store {
 #[rtype(result = "()")]
 pub struct Persist(pub Vec<Write>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Write {
     Punish(punishment::Model),
     Revoke { ids: Vec<Uuid>, by: Option<Uuid>, at: i64 },
@@ -115,6 +115,12 @@ pub enum Write {
     SetRelation { user: Uuid, target: Uuid, kind: relation::Kind, at: i64 },
     RemoveRelation { user: Uuid, target: Uuid },
     Settings { user: Uuid, hide_server: bool, accept_friend_requests: bool },
+    CreateGroup { id: Uuid, name: String, owner: Uuid, at: i64 },
+    RenameGroup { id: Uuid, name: String },
+    GroupOwner { id: Uuid, owner: Uuid },
+    DeleteGroup { id: Uuid },
+    GroupMember { group: Uuid, user: Uuid, role: chat_group_member::Role, at: i64 },
+    RemoveGroupMember { group: Uuid, user: Uuid },
 }
 
 const ATTEMPTS: u32 = 3;
@@ -187,30 +193,92 @@ async fn apply(db: &DatabaseConnection, writes: &[Write]) -> Result<(), DbErr> {
                     .exec(&txn)
                     .await?;
             }
+            Write::CreateGroup { id, name, owner, at } => {
+                chat_group::ActiveModel {
+                    id: Set(id),
+                    name: Set(name),
+                    owner_id: Set(owner),
+                    created_at: Set(at),
+                }
+                .insert(&txn)
+                .await?;
+            }
+            Write::RenameGroup { id, name } => {
+                chat_group::Entity::update_many()
+                    .col_expr(chat_group::Column::Name, Expr::value(name))
+                    .filter(chat_group::Column::Id.eq(id))
+                    .exec(&txn)
+                    .await?;
+            }
+            Write::GroupOwner { id, owner } => {
+                chat_group::Entity::update_many()
+                    .col_expr(chat_group::Column::OwnerId, Expr::value(owner))
+                    .filter(chat_group::Column::Id.eq(id))
+                    .exec(&txn)
+                    .await?;
+            }
+            Write::DeleteGroup { id } => {
+                chat_group_member::Entity::delete_many()
+                    .filter(chat_group_member::Column::GroupId.eq(id))
+                    .exec(&txn)
+                    .await?;
+                chat_group::Entity::delete_by_id(id).exec(&txn).await?;
+            }
+            Write::GroupMember { group, user, role, at } => {
+                chat_group_member::Entity::insert(chat_group_member::ActiveModel {
+                    group_id: Set(group),
+                    user_id: Set(user),
+                    role: Set(role),
+                    joined_at: Set(at),
+                })
+                .on_conflict(
+                    OnConflict::columns([chat_group_member::Column::GroupId, chat_group_member::Column::UserId])
+                        .update_columns([chat_group_member::Column::Role, chat_group_member::Column::JoinedAt])
+                        .to_owned(),
+                )
+                .exec(&txn)
+                .await?;
+            }
+            Write::RemoveGroupMember { group, user } => {
+                chat_group_member::Entity::delete_by_id((group, user)).exec(&txn).await?;
+            }
         }
     }
     txn.commit().await
 }
 
-/// The social graph and everyone in it.
+pub struct State {
+    pub relations: Vec<relation::Model>,
+    pub groups: Vec<chat_group::Model>,
+    pub members: Vec<chat_group_member::Model>,
+    pub users: Vec<user::Model>,
+}
+
 #[derive(Message)]
-#[rtype(result = "Result<(Vec<relation::Model>, Vec<user::Model>), DbErr>")]
-pub struct LoadSocial;
+#[rtype(result = "Result<State, DbErr>")]
+pub struct LoadState;
 
-impl Handler<LoadSocial> for Store {
-    type Result = AtomicResponse<Self, Result<(Vec<relation::Model>, Vec<user::Model>), DbErr>>;
+impl Handler<LoadState> for Store {
+    type Result = AtomicResponse<Self, Result<State, DbErr>>;
 
-    fn handle(&mut self, _msg: LoadSocial, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: LoadState, _ctx: &mut Context<Self>) -> Self::Result {
         atomic!(self, db => {
             let relations = relation::Entity::find().all(&db).await?;
-            let mut ids: Vec<Uuid> = relations.iter().flat_map(|r| [r.user_id, r.target_id]).collect();
+            let groups = chat_group::Entity::find().all(&db).await?;
+            let members = chat_group_member::Entity::find().all(&db).await?;
+
+            let mut ids: Vec<Uuid> = relations
+                .iter()
+                .flat_map(|r| [r.user_id, r.target_id])
+                .chain(members.iter().map(|m| m.user_id))
+                .collect();
             ids.sort_unstable();
             ids.dedup();
             let mut users = Vec::with_capacity(ids.len());
             for chunk in ids.chunks(1000) {
                 users.extend(user::Entity::find().filter(user::Column::Id.is_in(chunk.to_vec())).all(&db).await?);
             }
-            Ok((relations, users))
+            Ok(State { relations, groups, members, users })
         })
     }
 }
