@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use snafu::Snafu;
 use std::{error, fmt, io};
 
@@ -9,20 +9,17 @@ pub enum Error {
     #[snafu(display("I/O: {}", source))]
     IO { source: io::Error },
     #[snafu(display("JSON: {}", source))]
-    JSON { source: serde_json::error::Error },
+    Json { source: serde_json::error::Error },
     #[snafu(display("actix-web: {}", source))]
     Actix { source: actix_web::Error },
     #[cfg(feature = "openssl-tls")]
     #[snafu(display("OpenSSL: {}", source))]
     OpenSSL { source: openssl::error::ErrorStack },
     #[cfg(feature = "rustls-tls")]
-    #[snafu(display("rustls: {}", source))]
-    RustTLS { source: std::io::Error },
-    #[cfg(feature = "rustls-tls")]
     #[snafu(display("rustls"))]
     RustTLSNoMsg,
-    #[snafu(display("JWT: {}", source))]
-    JWT { source: jsonwebtoken::errors::Error },
+    #[snafu(display("database: {}", source))]
+    Database { source: sea_orm::DbErr },
     #[snafu(display("UUID parsing: {}", source))]
     Uuid { source: uuid::Error },
     #[snafu(display("axochat: {}", source))]
@@ -37,7 +34,7 @@ impl From<io::Error> for Error {
 
 impl From<serde_json::error::Error> for Error {
     fn from(source: serde_json::error::Error) -> Self {
-        Error::JSON { source }
+        Error::Json { source }
     }
 }
 
@@ -54,12 +51,6 @@ impl From<openssl::error::ErrorStack> for Error {
     }
 }
 
-impl From<jsonwebtoken::errors::Error> for Error {
-    fn from(source: jsonwebtoken::errors::Error) -> Self {
-        Error::JWT { source }
-    }
-}
-
 impl From<uuid::Error> for Error {
     fn from(source: uuid::Error) -> Self {
         Error::Uuid { source }
@@ -72,8 +63,8 @@ impl From<ClientError> for Error {
     }
 }
 
-/// A client-facing error.
-#[derive(Debug, Clone, Serialize)]
+/// A client-facing error, sent as its name.
+#[derive(Debug, Clone, PartialEq)]
 pub enum ClientError {
     NotSupported,
     LoginFailed,
@@ -90,34 +81,94 @@ pub enum ClientError {
     InvalidCharacter(char),
     InvalidId,
     Internal,
+    InvalidPacket,
+    Muted,
+    UnknownUser,
+    AlreadyFriends,
+    NotFriends,
+    NoInvite,
+    AccountRequired,
+    UnknownChannel,
+    UnknownGroup,
+    GroupFull,
+    InvalidName,
+    NotInParty,
+    AlreadyInParty,
+    PartyFull,
+    PartyLocked,
+    TooLarge,
+}
+
+impl ClientError {
+    pub fn code(&self) -> &'static str {
+        use self::ClientError::*;
+
+        match self {
+            NotSupported => "NotSupported",
+            LoginFailed => "LoginFailed",
+            NotLoggedIn => "NotLoggedIn",
+            AlreadyLoggedIn => "AlreadyLoggedIn",
+            MojangRequestMissing => "MojangRequestMissing",
+            NotPermitted => "NotPermitted",
+            NotBanned => "NotBanned",
+            Banned => "Banned",
+            RateLimited => "RateLimited",
+            PrivateMessageNotAccepted => "PrivateMessageNotAccepted",
+            EmptyMessage => "EmptyMessage",
+            MessageTooLong => "MessageTooLong",
+            InvalidCharacter(_) => "InvalidCharacter",
+            InvalidId => "InvalidId",
+            Internal => "Internal",
+            InvalidPacket => "InvalidPacket",
+            Muted => "Muted",
+            UnknownUser => "UnknownUser",
+            AlreadyFriends => "AlreadyFriends",
+            NotFriends => "NotFriends",
+            NoInvite => "NoInvite",
+            AccountRequired => "AccountRequired",
+            UnknownChannel => "UnknownChannel",
+            UnknownGroup => "UnknownGroup",
+            GroupFull => "GroupFull",
+            InvalidName => "InvalidName",
+            NotInParty => "NotInParty",
+            AlreadyInParty => "AlreadyInParty",
+            PartyFull => "PartyFull",
+            PartyLocked => "PartyLocked",
+            TooLarge => "TooLarge",
+        }
+    }
+
+    pub fn detail(&self) -> Option<String> {
+        match self {
+            ClientError::InvalidCharacter(ch) => Some(ch.to_string()),
+            _ => None,
+        }
+    }
+}
+
+impl Serialize for ClientError {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.code())
+    }
 }
 
 impl error::Error for ClientError {}
 
 impl fmt::Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::ClientError::*;
-
         match self {
-            NotSupported => write!(f, "method not supported"),
-            LoginFailed => write!(f, "login failed"),
-            NotLoggedIn => write!(f, "not logged in"),
-            AlreadyLoggedIn => write!(f, "already logged in"),
-            MojangRequestMissing => write!(f, "mojang request missing"),
-            NotPermitted => write!(f, "not permitted"),
-            NotBanned => write!(f, "not banned"),
-            Banned => write!(f, "banned"),
-            RateLimited => write!(f, "rate limited"),
-            PrivateMessageNotAccepted => write!(f, "private message not accepted"),
-            EmptyMessage => write!(f, "empty message"),
-            MessageTooLong => write!(f, "message was too long"),
-            InvalidCharacter(ch) => write!(
+            ClientError::InvalidCharacter(ch) => write!(
                 f,
                 "message contained invalid character: `{}`",
                 ch.escape_default()
             ),
-            InvalidId => write!(f, "invalid id"),
-            Internal => write!(f, "internal error"),
+            error => f.write_str(error.code()),
         }
+    }
+}
+
+impl From<sea_orm::DbErr> for Error {
+    fn from(source: sea_orm::DbErr) -> Self {
+        Error::Database { source }
     }
 }

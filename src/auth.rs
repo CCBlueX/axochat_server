@@ -2,20 +2,14 @@ use crate::error::*;
 use log::*;
 
 use reqwest::{self, StatusCode};
-use serde::{de::IgnoredAny, Deserialize, Serialize};
+use serde::Deserialize;
 use url::Url;
 
-use crate::config::AuthConfig;
-use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
-use std::{
-    sync::OnceLock,
-    time::{Duration, SystemTime},
-};
-use uuid::Uuid;
+use std::{sync::OnceLock, time::Duration};
 
-pub async fn authenticate(username: &str, server_id: &str) -> Result<AuthInfo> {
-    let mut url =
-        Url::parse("https://sessionserver.mojang.com/session/minecraft/hasJoined").unwrap();
+pub async fn authenticate(session_url: &str, username: &str, server_id: &str) -> Result<AuthInfo> {
+    let mut url = Url::parse(&format!("{}/session/minecraft/hasJoined", session_url.trim_end_matches('/')))
+        .map_err(|err| Error::IO { source: std::io::Error::new(std::io::ErrorKind::InvalidInput, err) })?;
     url.query_pairs_mut()
         .append_pair("username", username)
         .append_pair("serverId", server_id);
@@ -33,7 +27,7 @@ pub async fn authenticate(username: &str, server_id: &str) -> Result<AuthInfo> {
         .await
         .map_err(|err| {
             debug!("Reqwest error: {:?}", err);
-            Error::IO { source: std::io::Error::new(std::io::ErrorKind::Other, err) }
+            Error::IO { source: std::io::Error::other(err) }
         })?;
 
     if response.status() == StatusCode::OK {
@@ -42,7 +36,7 @@ pub async fn authenticate(username: &str, server_id: &str) -> Result<AuthInfo> {
             .await
             .map_err(|err| {
                 debug!("JSON deserialization error: {:?}", err);
-                Error::IO { source: std::io::Error::new(std::io::ErrorKind::Other, err) }
+                Error::IO { source: std::io::Error::other(err) }
             })
     } else {
         debug!("Login status-code is {}", response.status());
@@ -54,7 +48,6 @@ pub async fn authenticate(username: &str, server_id: &str) -> Result<AuthInfo> {
 pub struct AuthInfo {
     pub id: String,
     pub name: String,
-    properties: IgnoredAny,
 }
 
 pub fn encode_sha1_bytes(bytes: &[u8; 20]) -> String {
@@ -89,53 +82,17 @@ pub fn encode_sha1_bytes(bytes: &[u8; 20]) -> String {
     buf
 }
 
-pub struct Authenticator {
-    validation: Validation,
-    header: Header,
-    encoding_key: EncodingKey,
-    decoding_key: DecodingKey,
-    valid_time: Duration,
-}
+#[cfg(test)]
+mod tests {
+    use super::encode_sha1_bytes;
 
-impl Authenticator {
-    pub fn new(cfg: &AuthConfig) -> Option<Authenticator> {
-        let secret = cfg.secret.as_ref()?.as_bytes();
-        Some(Authenticator {
-            validation: Validation::new(cfg.algorithm),
-            header: Header::new(cfg.algorithm),
-            encoding_key: EncodingKey::from_secret(secret),
-            decoding_key: DecodingKey::from_secret(secret),
-            valid_time: cfg.valid_time?,
-        })
+    #[test]
+    fn session_hash_drops_leading_zeros() {
+        let mut bytes = [0u8; 20];
+        assert_eq!(encode_sha1_bytes(&bytes), "0");
+        bytes[19] = 0x0f;
+        assert_eq!(encode_sha1_bytes(&bytes), "f");
+        bytes[0] = 0x01;
+        assert_eq!(encode_sha1_bytes(&bytes), "10000000000000000000000000000000000000f");
     }
-
-    pub fn auth(&self, token: &str) -> Result<UserInfo> {
-        match jsonwebtoken::decode::<Claims>(token, &self.decoding_key, &self.validation) {
-            Ok(data) => Ok(data.claims.user),
-            Err(err) => Err(err.into()),
-        }
-    }
-
-    pub fn new_token(&self, info: UserInfo) -> Result<String> {
-        let unix_time = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("system time is somehow before the unix epoch");
-        let claims = Claims {
-            exp: (unix_time + self.valid_time).as_secs() as usize,
-            user: info,
-        };
-        jsonwebtoken::encode(&self.header, &claims, &self.encoding_key).map_err(|err| err.into())
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Claims {
-    exp: usize,
-    user: UserInfo,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UserInfo {
-    pub name: String,
-    pub uuid: Uuid,
 }

@@ -1,11 +1,11 @@
-use crate::error::*;
+use super::login::{identify, Verified};
+use crate::chat::world::Player;
+use crate::chat::{ChatServer, ClientPacket, InternalId, Kind, Login, Protocol, SuccessReason, User, UserId};
+use crate::error::ClientError;
+use crate::store::IdentityKey;
 use log::*;
 
-use crate::chat::{ChatServer, ClientPacket, InternalId, SuccessReason, User, UserSession, send_message};
-use crate::message::RateLimiter;
-use std::collections::HashSet;
-
-use crate::auth::authenticate;
+use crate::auth::{authenticate, AuthInfo};
 use actix::*;
 use rand::Rng;
 use std::str::FromStr;
@@ -13,10 +13,7 @@ use uuid::Uuid;
 
 impl ChatServer {
     pub(super) fn handle_request_mojang_info(&mut self, user_id: InternalId) {
-        let session = self
-            .connections
-            .get_mut(&user_id)
-            .expect("could not find connection");
+        let Some(connection) = self.connections.get_mut(&user_id) else { return };
 
         let mut bytes = [0; 20];
         self.rng.fill_bytes(&mut bytes);
@@ -24,121 +21,114 @@ impl ChatServer {
         bytes[0] &= 0b0111_1111;
 
         let session_hash = crate::auth::encode_sha1_bytes(&bytes);
-        session.session_hash = Some(session_hash.clone());
+        connection.session_hash = Some(session_hash.clone());
+        self.send(user_id, ClientPacket::MojangInfo { session_hash });
+    }
 
-        send_message(
-            &session.addr,
-            ClientPacket::MojangInfo { session_hash },
-            "mojang info"
+    pub(super) fn login_mojang(&mut self, user_id: InternalId, info: User, ctx: &mut Context<Self>) {
+        let Some(connection) = self.connections.get(&user_id) else { return };
+        if let Login::User(user) = connection.login {
+            if connection.protocol >= Protocol::V2 && self.identity(user).kind == Kind::Account {
+                self.prove_minecraft(user_id, user, info, ctx);
+                return;
+            }
+        }
+        if connection.login == Login::Anonymous && connection.session_hash.is_none() {
+            info!("User `{}` did not request mojang info, but tried to log in.", user_id);
+            self.send_error(user_id, ClientError::MojangRequestMissing);
+            return;
+        }
+        let session_hash = connection.session_hash.clone().unwrap_or_default();
+        let Some(visit) = self.begin_login(user_id) else { return };
+        let delay = visit.delay;
+
+        let allow_messages = info.allow_messages;
+        let session_url = self.config.mojang.session_url.clone();
+        let (api, store, logins) = (self.api.clone(), self.store.clone(), self.logins.clone());
+
+        ctx.spawn(
+            async move {
+                actix::clock::sleep(delay).await;
+                let _permit = logins.acquire().await;
+                let profile = verify(&session_url, user_id, &info, &session_hash).await?;
+
+                // a Minecraft account linked to a LiquidBounce Account logs in as that account
+                let linked = api.linked_account(info.uuid).await.unwrap_or_else(|err| {
+                    warn!("Could not look up the account linked to `{}`: {}", info.uuid, err);
+                    None
+                });
+                let (request, roles, minecraft) = match linked {
+                    Some(account) => (
+                        visit.identify(
+                            IdentityKey::Account(account.user_id),
+                            account.nickname.unwrap_or_else(|| profile.name.clone()),
+                            Some(info.uuid),
+                        ),
+                        account.roles,
+                        Some(Player {
+                            uuid: info.uuid,
+                            name: profile.name,
+                        }),
+                    ),
+                    None => (visit.identify(IdentityKey::Minecraft(info.uuid), profile.name, None), Vec::new(), None),
+                };
+                let model = identify(store, request).await?;
+                Ok(Verified { model, roles, minecraft })
+            }
+            .into_actor(self)
+            .map(move |result, actor, _ctx| actor.finish_login(user_id, result, allow_messages)),
         );
     }
 
-    pub(super) fn login_mojang(
-        &mut self,
-        user_id: InternalId,
-        info: User,
-        ctx: &mut Context<Self>,
-    ) {
-        let session = self
-            .connections
-            .get(&user_id)
-            .expect("could not find connection");
-
-        if session.is_logged_in() {
-            info!("User `{}` tried to log in multiple times.", user_id);
-            send_message(
-                &session.addr,
-                ClientPacket::Error {
-                    message: ClientError::AlreadyLoggedIn,
-                },
-                "mojang already logged in"
-            );
+    fn prove_minecraft(&mut self, user_id: InternalId, user: UserId, info: User, ctx: &mut Context<Self>) {
+        let Some(session_hash) = self.connections.get_mut(&user_id).and_then(|connection| connection.session_hash.take())
+        else {
+            self.send_error(user_id, ClientError::MojangRequestMissing);
             return;
-        }
+        };
+        let Some(delay) = self.login_turn(user_id) else { return };
+        let session_url = self.config.mojang.session_url.clone();
+        let logins = self.logins.clone();
 
-        if let Some(session_hash) = &session.session_hash {
-            let session_hash = session_hash.clone();
-            let name = info.name.clone();
-            let uuid = info.uuid;
-            let userid_for_closure = user_id;
-            let session_addr = session.addr.clone();
-
-            ctx.spawn(
-                async move {
-                    authenticate(&name, &session_hash).await
+        ctx.spawn(
+            async move {
+                actix::clock::sleep(delay).await;
+                let _permit = logins.acquire().await;
+                let profile = verify(&session_url, user_id, &info, &session_hash).await?;
+                Ok(Player {
+                    uuid: info.uuid,
+                    name: profile.name,
+                })
+            }
+            .into_actor(self)
+            .map(move |result: Result<Player, ClientError>, actor, _ctx| {
+                let Some(connection) = actor.connections.get_mut(&user_id) else { return };
+                if connection.login != Login::User(user) {
+                    return;
                 }
-                .into_actor(self)
-                .then(move |res, actor, _ctx| {
-                    match res {
-                        Ok(mojang_info)
-                            if Uuid::from_str(&mojang_info.id)
-                                .expect("got invalid uuid from mojang :()")
-                                == uuid =>
-                        {
-                            info!(
-                                "User `{}` has uuid `{}` and username `{}`",
-                                userid_for_closure, mojang_info.id, mojang_info.name
-                            );
-
-                            if let Some(session) = actor.connections.get_mut(&userid_for_closure) {
-                                actor
-                                    .users
-                                    .entry(info.name.clone())
-                                    .or_insert(UserSession {
-                                        rate_limiter: RateLimiter::new(
-                                            actor.config.message.clone(),
-                                        ),
-                                        connections: HashSet::new(),
-                                    })
-                                    .connections
-                                    .insert(userid_for_closure);
-
-                                session.user = Some(info);
-
-                                send_message(
-                                    &session.addr,
-                                    ClientPacket::Success {
-                                        reason: SuccessReason::Login,
-                                    },
-                                    "mojang login success"
-                                );
-                            }
+                match result {
+                    Ok(player) => {
+                        connection.minecraft = Some(player);
+                        actor.send(user_id, ClientPacket::Success { reason: SuccessReason::Minecraft });
+                        for (friend, _) in actor.social.friends(user) {
+                            actor.send_friends(friend);
                         }
-                        Ok(_) => {
-                            send_message(
-                                &session_addr,
-                                ClientPacket::Error {
-                                    message: ClientError::InvalidId,
-                                },
-                                "mojang invalid id"
-                            );
-                        }
-                        Err(err) => {
-                            warn!("Could not authenticate user `{}`: {}", userid_for_closure, err);
-                            send_message(
-                                &session_addr,
-                                ClientPacket::Error {
-                                    message: ClientError::LoginFailed,
-                                },
-                                "mojang login failed"
-                            );
-                        }
+                        actor.refresh_party(user);
                     }
-                    fut::ready(())
-                }),
-            );
-        } else {
-            info!(
-                "User `{}` did not request mojang info, but tried to log in.",
-                user_id
-            );
-            send_message(
-                &session.addr,
-                ClientPacket::Error {
-                    message: ClientError::MojangRequestMissing,
-                },
-                "mojang info missing"
-            );
-        }
+                    Err(error) => actor.send_error(user_id, error),
+                }
+            }),
+        );
     }
+}
+
+async fn verify(session_url: &str, user_id: InternalId, info: &User, session_hash: &str) -> Result<AuthInfo, ClientError> {
+    let profile = authenticate(session_url, &info.name, session_hash).await.map_err(|err| {
+        warn!("Could not authenticate user `{}`: {}", user_id, err);
+        ClientError::LoginFailed
+    })?;
+    if Uuid::from_str(&profile.id).ok() != Some(info.uuid) {
+        return Err(ClientError::InvalidId);
+    }
+    Ok(profile)
 }

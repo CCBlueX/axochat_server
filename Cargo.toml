@@ -2,7 +2,7 @@
 name = "axochat"
 version = "0.10.0"
 authors = ["frozolotl <frozolotl@protonmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "MIT"
 
 [features]
@@ -24,9 +24,9 @@ snafu = "0.9"
 
 actix-web = { version = "4.15", default-features = false, features = ["macros"] }
 actix-ws = "0.4"
+bytestring = "1"
 actix = "0.13"
 
-jsonwebtoken = { version = "11.1", features = ["aws_lc_rs"] }
 
 rustls = { version = "0.23", optional = true }
 openssl = { version = "0.10", features = ["v110"], optional = true }
@@ -34,3 +34,11 @@ openssl = { version = "0.10", features = ["v110"], optional = true }
 url = "2.5"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 rlimit = "0.11"
+sea-orm = { version = "2.0", default-features = false, features = ["sqlx-mysql", "runtime-tokio", "macros", "with-uuid", "entity-registry", "schema-sync"] }
+tokio = { version = "1", default-features = false, features = ["sync"] }
+md-5 = { version = "0.11", default-features = false }
+
+[dev-dependencies]
+actix-codec = "0.5"
+awc = { version = "3", default-features = false }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }

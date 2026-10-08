@@ -1,32 +1,37 @@
-use super::{
-    connect::Connect, ChatServer, ClientPacket, Disconnect, InternalId, ServerPacket,
-    ServerPacketId,
-};
+use super::{connect::Connect, ChatServer, Disconnect, InternalId, Malformed, ServerPacket, ServerPacketId};
 
 use log::*;
 
 use actix::*;
 use actix_ws as ws;
+use bytestring::ByteString;
 use std::future::Future;
+use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 const PONG_TIMEOUT: Duration = Duration::from_secs(90);
 
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
+pub struct Frame(pub ByteString);
+
 pub struct Session {
     id: InternalId,
     addr: Addr<ChatServer>,
     ws: ws::Session,
+    ip: IpAddr,
     // old clients never answer pings, so the timeout only applies after the first pong
     last_pong: Option<Instant>,
 }
 
 impl Session {
-    pub fn new(id: InternalId, addr: Addr<ChatServer>, ws: ws::Session) -> Session {
+    pub fn new(id: InternalId, addr: Addr<ChatServer>, ws: ws::Session, ip: IpAddr) -> Session {
         Session {
             id,
             addr,
             ws,
+            ip,
             last_pong: None,
         }
     }
@@ -61,19 +66,22 @@ impl Actor for Session {
     fn started(&mut self, ctx: &mut Self::Context) {
         let addr = self.addr.clone();
         let recipient = ctx.address().recipient();
-        
+        let ip = self.ip;
+
         // wait, not spawn: no frame may be handled before the id is assigned
         ctx.wait(async move {
-                addr.send(Connect::new(recipient)).await
+                addr.send(Connect::new(recipient, ip)).await
             }
             .into_actor(self)
-            .map(|res, actor, _ctx| {
+            .map(|res, actor, ctx| {
                 match res {
-                    Ok(id) => {
+                    Ok(Some(id)) => {
                         actor.id = id;
                     }
+                    Ok(None) => actor.close(ctx, Some(ws::CloseCode::Policy.into())),
                     Err(err) => {
                         warn!("Could not accept connection: {}", err);
+                        ctx.stop();
                     }
                 }
             })
@@ -112,7 +120,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
             }
         };
 
-        debug!("Received message {:?}", msg);
         match msg {
             ws::Message::Ping(msg) => self.send(ctx, |mut ws| async move { ws.pong(&msg).await }),
             ws::Message::Pong(_msg) => self.last_pong = Some(Instant::now()),
@@ -122,9 +129,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
                     user_id: self.id,
                     packet,
                 }),
-                Err(err) => {
-                    warn!("Could not decode packet: {}", err);
-                }
+                Err(err) => self.addr.do_send(Malformed {
+                    user_id: self.id,
+                    error: err.to_string(),
+                }),
             },
             ws::Message::Binary(_msg) => {
                 warn!("Can't decode binary messages.");
@@ -149,11 +157,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
     }
 }
 
-impl Handler<ClientPacket> for Session {
+impl Handler<Frame> for Session {
     type Result = ();
 
-    fn handle(&mut self, msg: ClientPacket, ctx: &mut Self::Context) {
-        let msg = serde_json::to_string(&msg).expect("could not encode message");
-        self.send(ctx, |mut ws| async move { ws.text(msg).await });
+    fn handle(&mut self, Frame(frame): Frame, ctx: &mut Self::Context) {
+        self.send(ctx, |mut ws| async move { ws.text(frame).await });
     }
 }

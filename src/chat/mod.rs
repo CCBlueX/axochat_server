@@ -1,83 +1,476 @@
+mod channel;
 mod connect;
+mod group;
+mod party;
 mod handler;
 mod id;
+mod packet;
 mod session;
+mod social;
+mod world;
 
 pub use id::*;
+pub use session::Frame;
 
+use packet::*;
+use channel::Channel;
+use group::{GroupId, Groups};
+use party::Parties;
+use world::{Location, Player};
+use social::Social;
+
+use crate::api::{Api, RoleDefinition};
 use crate::config::Config;
-use crate::error::*;
+use crate::entity::user;
+use crate::error::ClientError;
+use crate::ip::RealIp;
+use crate::message::{ActionLimiter, MessageValidator, RateLimiter};
+use crate::moderation::{Moderation, Punishment};
+use crate::store::{FindUser, Persist, State, Store, Write};
 use log::*;
 
 use actix::*;
 use actix_web::{web, HttpRequest, HttpResponse};
-use serde::{Deserialize, Serialize};
-
-use crate::auth::{Authenticator, UserInfo};
-use crate::message::{MessageValidator, RateLimiter};
-use crate::moderation::Moderation;
 use rand::{rngs::SysRng, SeedableRng};
 use rand_hc::Hc128Rng;
-use std::collections::{HashMap, HashSet};
+use serde::Serialize;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::net::IpAddr;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Semaphore;
 use uuid::Uuid;
+
+const MAX_FRAME_SIZE: usize = 64 * 1024;
+/// Outgoing login requests at once; a restart reconnects everyone at the same time.
+const CONCURRENT_LOGINS: usize = 64;
+const ROLE_REFRESH: Duration = Duration::from_secs(600);
+const MAINTENANCE: Duration = Duration::from_secs(3600);
+const HISTORY: usize = 1000;
+const PARTY_TICK: Duration = Duration::from_secs(2);
+const LOGIN_BURST: u32 = 10;
+const LOGIN_RATE: f64 = 0.5;
+const LOGIN_MAX_WAIT: Duration = Duration::from_secs(60);
+/// Connections from one address that have not logged in; v1 sessions never time out.
+const ANONYMOUS_PER_ADDRESS: usize = 16;
 
 pub async fn chat_route(
     req: HttpRequest,
     stream: web::Payload,
     srv: web::Data<Addr<ChatServer>>,
+    real_ip: web::Data<RealIp>,
 ) -> actix_web::Result<HttpResponse> {
+    let ip = real_ip.of(&req);
     let (response, ws, messages) = actix_ws::handle(&req, stream)?;
     session::Session::create(|ctx| {
-        ctx.add_stream(messages);
-        session::Session::new(InternalId::new(0), srv.get_ref().clone(), ws)
+        ctx.add_stream(messages.max_frame_size(MAX_FRAME_SIZE));
+        session::Session::new(InternalId::new(0), srv.get_ref().clone(), ws, ip)
     });
     Ok(response)
 }
 
-pub struct ChatServer {
-    connections: HashMap<InternalId, SessionState>,
-    users: HashMap<String, UserSession>,
+pub type UserId = Uuid;
 
-    rng: rand_hc::Hc128Rng,
-    authenticator: Option<Authenticator>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    Account,
+    Mojang,
+}
+
+#[derive(Debug, Clone)]
+pub struct Identity {
+    pub id: UserId,
+    pub kind: Kind,
+    pub name: String,
+    /// The Minecraft account shown for this user, nil if unknown.
+    pub uuid: Uuid,
+}
+
+impl Identity {
+    fn of(model: &user::Model) -> Identity {
+        Identity {
+            id: model.id,
+            kind: if model.account.is_some() { Kind::Account } else { Kind::Mojang },
+            name: model.name.clone(),
+            uuid: model
+                .minecraft_uuid
+                .or(model.linked_minecraft_uuid)
+                .unwrap_or_else(Uuid::nil),
+        }
+    }
+
+    fn info(&self) -> UserInfo {
+        UserInfo {
+            name: self.name.clone(),
+            uuid: self.uuid,
+        }
+    }
+}
+
+pub struct ChatServer {
+    connections: HashMap<InternalId, Connection>,
+    users: HashMap<UserId, OnlineUser>,
+    /// Everyone seen since startup or related to someone.
+    directory: HashMap<UserId, Identity>,
+
+    store: Addr<Store>,
+    api: Arc<Api>,
+    logins: Arc<Semaphore>,
+    /// In the order of the Service API, which is the order prefixes are shown in.
+    roles: Vec<RoleDefinition>,
+    social: Social,
+    groups: Groups,
+    parties: Parties,
+    party_snapshots: HashMap<UserId, String>,
+    member_states: HashMap<UserId, MemberState>,
+    /// Servers whose hashed seeds are hidden or randomized.
+    unreliable_seeds: HashSet<String>,
+    login_pace: HashMap<IpAddr, ActionLimiter>,
+    rng: Hc128Rng,
     validator: MessageValidator,
     moderation: Moderation,
     config: Config,
 
     current_internal_user_id: u64,
+    history: VecDeque<Recorded>,
+    recent_reports: Vec<RecentReport>,
+    next_message_id: u64,
 }
 
 impl ChatServer {
-    pub fn new(config: Config) -> ChatServer {
+    pub fn new(
+        config: Config,
+        store: Addr<Store>,
+        punishments: Vec<Punishment>,
+        state: State,
+    ) -> ChatServer {
         ChatServer {
             connections: HashMap::new(),
             users: HashMap::new(),
+            directory: state.users.iter().map(|model| (model.id, Identity::of(model))).collect(),
 
+            store,
+            api: Arc::new(Api::new(&config.api)),
+            logins: Arc::new(Semaphore::new(CONCURRENT_LOGINS)),
+            roles: Vec::new(),
+            social: Social::new(state.relations),
+            groups: Groups::new(state.groups, state.members),
+            parties: Parties::default(),
+            party_snapshots: HashMap::new(),
+            member_states: HashMap::new(),
+            unreliable_seeds: HashSet::new(),
+            login_pace: HashMap::new(),
             rng: Hc128Rng::try_from_rng(&mut SysRng).expect("could not initialize hc128 rng"),
-            authenticator: Authenticator::new(&config.auth),
             validator: MessageValidator::new(config.message.clone()),
-            moderation: Moderation::new(config.moderation.clone())
-                .expect("could not start moderation"),
+            moderation: Moderation::new(punishments),
             config,
 
             current_internal_user_id: 0,
+            history: VecDeque::with_capacity(HISTORY),
+            recent_reports: Vec::new(),
+            next_message_id: 1,
         }
+    }
+
+    fn send(&self, id: InternalId, packet: ClientPacket) -> bool {
+        self.connections
+            .get(&id)
+            .is_some_and(|connection| send_message(connection, packet))
+    }
+
+    fn send_error(&self, id: InternalId, error: ClientError) {
+        self.send(id, ClientPacket::error(error));
+    }
+
+    /// The logged in user of a connection, or `NotLoggedIn` sent back.
+    fn logged_in(&self, id: InternalId) -> Option<UserId> {
+        match self.connections.get(&id)?.login {
+            Login::User(user) => Some(user),
+            _ => {
+                self.send_error(id, ClientError::NotLoggedIn);
+                None
+            }
+        }
+    }
+
+    fn identity(&self, user: UserId) -> &Identity {
+        self.directory.get(&user).expect("online users are in the directory")
+    }
+
+    /// Names are not unique, so the requester's friends and party come first, then online users, the one
+    /// seen first winning; a newcomer taking a known name gets nothing meant for the other.
+    fn find_by_name(&self, requester: UserId, name: &str, scope: Scope) -> Option<UserId> {
+        let named = |user: &UserId| {
+            self.directory
+                .get(user)
+                .filter(|identity| identity.name.eq_ignore_ascii_case(name) && scope.by_name(identity.kind))
+        };
+        let contacts = self
+            .social
+            .friends(requester)
+            .map(|(friend, _)| friend)
+            .chain(self.parties.of(requester).into_iter().flat_map(|party| party.users()));
+        contacts
+            .filter_map(|user| named(&user))
+            .min_by_key(|identity| identity.name != name)
+            .or_else(|| {
+                self.users
+                    .iter()
+                    .filter_map(|(user, online)| named(user).map(|identity| (identity, online.created_at)))
+                    .min_by_key(|(identity, created_at)| (identity.name != name, *created_at))
+                    .map(|(identity, _)| identity)
+            })
+            .map(|identity| identity.id)
+    }
+
+    fn online_connections(&self, user: UserId) -> impl Iterator<Item = (InternalId, &Connection)> {
+        self.users
+            .get(&user)
+            .into_iter()
+            .flat_map(|online| online.connections.iter())
+            .filter_map(|id| self.connections.get(id).map(|connection| (*id, connection)))
+    }
+
+    fn send_v2(&self, id: InternalId, packet: ClientPacket) -> bool {
+        self.connections
+            .get(&id)
+            .is_some_and(|connection| connection.protocol >= Protocol::V2 && send_message(connection, packet))
+    }
+
+    fn persist(&self, writes: Vec<Write>) {
+        self.store.do_send(Persist(writes));
+    }
+
+    fn resolve_user<F>(&mut self, ctx: &mut Context<Self>, requester: UserId, query: String, scope: Scope, then: F)
+    where
+        F: FnOnce(&mut ChatServer, &mut Context<ChatServer>, Option<Resolved>) + 'static,
+    {
+        let known = Uuid::parse_str(&query)
+            .ok()
+            .filter(|id| self.directory.get(id).is_some_and(|identity| scope.by_id(identity.kind)))
+            .or_else(|| self.find_by_name(requester, &query, scope));
+        let query = known.map_or(query, |user| user.to_string());
+        if let Some(user) = known.filter(|user| self.users.contains_key(user)) {
+            let resolved = Resolved {
+                identity: self.identity(user).clone(),
+                accept_friend_requests: self.users[&user].accept_friend_requests,
+                last_ip: self.online_connections(user).next().map(|(_, connection)| connection.ip),
+            };
+            then(self, ctx, Some(resolved));
+            return;
+        }
+
+        let store = self.store.clone();
+        let find = FindUser {
+            query,
+            minecraft_by_id: scope != Scope::Accounts,
+            minecraft_by_name: scope == Scope::Staff,
+        };
+        ctx.spawn(async move { store.send(find).await }.into_actor(self).map(
+            move |result, actor, ctx| {
+                let resolved = match result {
+                    Ok(Ok(model)) => model.map(|model| {
+                        let identity = Identity::of(&model);
+                        actor.directory.entry(identity.id).or_insert_with(|| identity.clone());
+                        Resolved {
+                            identity,
+                            accept_friend_requests: model.accept_friend_requests,
+                            last_ip: model.last_ip.and_then(|ip| ip.parse().ok()),
+                        }
+                    }),
+                    Ok(Err(err)) => {
+                        error!("Could not look up user: {}", err);
+                        None
+                    }
+                    Err(err) => {
+                        error!("Store unavailable: {}", err);
+                        None
+                    }
+                };
+                then(actor, ctx, resolved)
+            },
+        ));
+    }
+
+    /// The socket stays open, as old clients reconnect at once.
+    fn logout(&mut self, id: InternalId) {
+        let Some(connection) = self.connections.get_mut(&id) else { return };
+        let Login::User(user) = connection.login else { return };
+        connection.login = Login::Anonymous;
+        connection.location = None;
+        let Some(online) = self.users.get_mut(&user) else { return };
+        online.connections.retain(|connection| *connection != id);
+        if online.game == Some(id) {
+            online.game = online
+                .connections
+                .iter()
+                .copied()
+                .find(|other| self.connections.get(other).is_some_and(|other| other.location.is_some()));
+        }
+        if online.connections.is_empty() {
+            self.users.remove(&user);
+            self.parties.set_online(user, false, now_ms());
+            self.send_presence(user);
+        }
+        self.refresh_party(user);
+    }
+
+    fn game_location(&self, user: UserId) -> Option<&Location> {
+        let game = self.users.get(&user)?.game?;
+        self.connections.get(&game)?.location.as_ref()
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Scope {
+    /// Messages, friends, parties and groups are between LiquidBounce Accounts.
+    Accounts,
+    /// Names still only find accounts: a Minecraft account is named after itself, and nobody may find out
+    /// whether it uses LiquidChat. It is addressed by the id its messages carry.
+    Anyone,
+    Staff,
+}
+
+impl Scope {
+    fn by_id(self, kind: Kind) -> bool {
+        self != Scope::Accounts || kind == Kind::Account
+    }
+
+    fn by_name(self, kind: Kind) -> bool {
+        self == Scope::Staff || kind == Kind::Account
+    }
+}
+
+pub(super) struct Resolved {
+    identity: Identity,
+    accept_friend_requests: bool,
+    last_ip: Option<IpAddr>,
+}
+
 // try_send would also fail on a full mailbox; only a closed one is a delivery failure.
-pub(crate) fn send_message(recipient: &Recipient<ClientPacket>, message: ClientPacket, context: &str) -> bool {
-    if recipient.connected() {
-        recipient.do_send(message);
+fn send_message(connection: &Connection, message: ClientPacket) -> bool {
+    if connection.addr.connected() {
+        connection.addr.do_send(message.encode(connection.protocol));
         true
     } else {
-        warn!("Could not send {} to user: mailbox closed", context);
+        warn!("Could not send packet: mailbox closed");
         false
     }
 }
 
 impl Actor for ChatServer {
     type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Context<Self>) {
+        self.refresh_roles(ctx);
+        ctx.run_interval(ROLE_REFRESH, |actor, ctx| actor.refresh_roles(ctx));
+        ctx.run_interval(PARTY_TICK, |actor, _ctx| actor.party_tick());
+        ctx.run_interval(MAINTENANCE, |actor, _ctx| {
+            let now = now_ms();
+            actor.moderation.prune(now);
+            actor.login_pace.retain(|_, pace| !pace.is_idle());
+            actor.social.prune(now);
+            let retention = actor.config.moderation.ip_retention.as_millis() as i64;
+            actor.persist(vec![Write::ForgetIps { seen_before: now - retention }]);
+        });
+    }
+}
+
+impl ChatServer {
+    fn refresh_roles(&mut self, ctx: &mut Context<Self>) {
+        let api = self.api.clone();
+        ctx.spawn(async move { api.roles().await }.into_actor(self).map(|result, actor, _ctx| {
+            match result {
+                Ok(roles) => {
+                    actor.roles = roles;
+                }
+                Err(err) => warn!("Could not refresh roles: {}", err),
+            }
+        }));
+    }
+
+    fn is_staff(&self, user: UserId) -> bool {
+        self.users
+            .get(&user)
+            .is_some_and(|online| self.has_staff_role(&online.roles))
+    }
+
+    fn has_perks(&self, user: UserId) -> bool {
+        self.is_staff(user)
+            || self
+                .users
+                .get(&user)
+                .is_some_and(|online| online.roles.iter().any(|role| self.config.message.perk_roles.contains(role)))
+    }
+
+    fn has_staff_role(&self, roles: &[String]) -> bool {
+        roles
+            .iter()
+            .any(|role| self.role(role).is_some_and(|role| role.is_staff))
+    }
+
+    fn role(&self, id: &str) -> Option<&RoleDefinition> {
+        self.roles.iter().find(|role| role.id == id)
+    }
+
+    fn user_ref(&self, user: UserId) -> UserRef {
+        self.known_ref(user).expect("online users are in the directory")
+    }
+
+    /// The head follows the Minecraft account they play on.
+    fn known_ref(&self, user: UserId) -> Option<UserRef> {
+        let mut reference = UserRef::from(self.directory.get(&user)?);
+        reference.minecraft = self
+            .online_connections(user)
+            .find_map(|(_, connection)| connection.minecraft.clone());
+        if let Some(minecraft) = &reference.minecraft {
+            reference.uuid = minecraft.uuid;
+        }
+        Some(reference)
+    }
+
+    /// Whose Minecraft account someone plays on only shows to themselves, their friends and their party.
+    fn ref_for(&self, viewer: UserId, user: UserId) -> Option<UserRef> {
+        let mut reference = self.known_ref(user)?;
+        let close = viewer == user
+            || self.social.are_friends(viewer, user)
+            || self.parties.of(viewer).is_some_and(|party| party.users().any(|member| member == user));
+        if !close {
+            reference.uuid = Uuid::nil();
+            reference.minecraft = None;
+        }
+        Some(reference)
+    }
+
+    fn author(&self, user: UserId) -> Author {
+        let mut roles: Vec<RoleView> = self
+            .users
+            .get(&user)
+            .into_iter()
+            .flat_map(|online| online.roles.iter())
+            .map(|id| match self.role(id) {
+                Some(role) => RoleView {
+                    id: role.id.clone(),
+                    name: role.display_name.clone(),
+                    staff: role.is_staff,
+                },
+                None => RoleView {
+                    id: id.clone(),
+                    name: id.clone(),
+                    staff: false,
+                },
+            })
+            .collect();
+        let position = |role: &RoleView| self.roles.iter().position(|known| known.id == role.id).unwrap_or(usize::MAX);
+        roles.sort_by_key(|role| (!role.staff, position(role)));
+
+        Author {
+            user: self.user_ref(user),
+            roles,
+            highlight: self.has_perks(user),
+        }
+    }
 }
 
 impl Handler<Disconnect> for ChatServer {
@@ -85,89 +478,82 @@ impl Handler<Disconnect> for ChatServer {
 
     fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) {
         info!("User `{}` disconnected.", msg.id);
-        if let Some(session) = self.connections.remove(&msg.id) {
-            if let Some(info) = session.user {
-                let user_session = self
-                    .users
-                    .get_mut(&info.name)
-                    .expect("the ids should still exist here");
-                user_session.connections.remove(&msg.id);
-                if user_session.connections.is_empty() {
-                    self.users.remove(&info.name);
-                }
-            }
+        self.logout(msg.id);
+        self.connections.remove(&msg.id);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Login {
+    Anonymous,
+    Pending,
+    User(UserId),
+}
+
+struct Connection {
+    addr: Recipient<Frame>,
+    ip: IpAddr,
+    protocol: Protocol,
+    session_hash: Option<String>,
+    login: Login,
+    allow_messages: bool,
+    server_chat: bool,
+    minecraft: Option<Player>,
+    location: Option<Location>,
+    limits: StateLimits,
+}
+
+struct StateLimits {
+    location: ActionLimiter,
+    sightings: ActionLimiter,
+    position: ActionLimiter,
+    status: ActionLimiter,
+    inventory: ActionLimiter,
+}
+
+impl Default for StateLimits {
+    fn default() -> StateLimits {
+        StateLimits {
+            location: ActionLimiter::new(5, 2.0),
+            sightings: ActionLimiter::new(5, 2.0),
+            position: ActionLimiter::new(10, 10.0),
+            status: ActionLimiter::new(4, 4.0),
+            inventory: ActionLimiter::new(2, 1.0),
         }
     }
 }
 
-pub(self) struct SessionState {
-    addr: Recipient<ClientPacket>,
-    session_hash: Option<String>,
-    user: Option<User>,
+#[derive(Default)]
+struct MemberState {
+    position: Option<Position>,
+    status: Option<serde_json::Value>,
+    inventory: Option<serde_json::Value>,
 }
 
-impl SessionState {
-    pub fn is_logged_in(&self) -> bool {
-        self.user.is_some()
+impl Connection {
+    fn user(&self) -> Option<UserId> {
+        match self.login {
+            Login::User(user) => Some(user),
+            _ => None,
+        }
     }
 }
 
-struct UserSession {
+struct OnlineUser {
+    connections: Vec<InternalId>,
     rate_limiter: RateLimiter,
-    connections: HashSet<InternalId>,
+    actions: ActionLimiter,
+    roles: Vec<String>,
+    hide_server: bool,
+    accept_friend_requests: bool,
+    created_at: i64,
+    game: Option<InternalId>,
 }
 
 #[derive(Message)]
 #[rtype(result = "()")]
 struct Disconnect {
     id: InternalId,
-}
-
-/// A clientbound packet
-#[derive(Message, Serialize, Clone)]
-#[rtype(result = "()")]
-#[serde(tag = "m", content = "c")]
-enum ClientPacket {
-    MojangInfo {
-        session_hash: String,
-    },
-    NewJWT {
-        token: String,
-    },
-    Message {
-        author_info: UserInfo,
-        content: String,
-    },
-    PrivateMessage {
-        author_info: UserInfo,
-        content: String,
-    },
-    UserCount {
-        connections: u32,
-        logged_in: u32,
-    },
-    Success {
-        reason: SuccessReason,
-    },
-    Error {
-        message: ClientError,
-    },
-}
-
-/// A serverbound packet
-#[derive(Message, Deserialize)]
-#[rtype(result = "()")]
-#[serde(tag = "m", content = "c")]
-enum ServerPacket {
-    RequestMojangInfo,
-    LoginMojang(User),
-    LoginJWT { token: String, allow_messages: bool },
-    RequestJWT,
-    Message { content: String },
-    PrivateMessage { receiver: String, content: String },
-    BanUser { user: Uuid },
-    UnbanUser { user: Uuid },
-    RequestUserCount,
 }
 
 #[derive(Message)]
@@ -177,17 +563,28 @@ struct ServerPacketId {
     packet: ServerPacket,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-struct User {
-    pub name: String,
-    pub uuid: Uuid,
-    /// Should this user allow private messages?
-    pub allow_messages: bool,
+#[derive(Message)]
+#[rtype(result = "()")]
+struct Malformed {
+    user_id: InternalId,
+    error: String,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone)]
-enum SuccessReason {
-    Login,
-    Ban,
-    Unban,
+struct Recorded {
+    id: u64,
+    channel: Channel,
+    author: UserId,
+    content: String,
+    time: i64,
+    /// `None` for public channels.
+    audience: Option<Vec<UserId>>,
+}
+
+struct RecentReport {
+    at: i64,
+    target: UserId,
+    reporter: UserId,
+    message: Option<u64>,
+    /// The reporter's network, if the report counts towards an automatic mute.
+    network: Option<crate::ip::Cidr>,
 }
