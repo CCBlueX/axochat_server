@@ -1,6 +1,6 @@
 use log::*;
 
-use super::{session::Frame, ChatServer, InternalId, Protocol, SessionState};
+use super::{session::Frame, ChatServer, Connection, InternalId, Login, Protocol};
 use actix::*;
 use std::net::IpAddr;
 
@@ -25,13 +25,13 @@ impl Handler<Connect> for ChatServer {
         let id = InternalId::new(self.current_internal_user_id);
         self.connections.insert(
             id,
-            SessionState {
+            Connection {
                 addr: msg.addr,
                 ip: msg.ip,
                 protocol: Protocol::V1,
                 session_hash: None,
-                login_pending: false,
-                user: None,
+                login: Login::Anonymous,
+                allow_messages: false,
             },
         );
         debug!("User `{}` joined the chat from {}.", id, msg.ip);

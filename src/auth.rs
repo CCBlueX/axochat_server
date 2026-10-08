@@ -13,9 +13,9 @@ use std::{
 };
 use uuid::Uuid;
 
-pub async fn authenticate(username: &str, server_id: &str) -> Result<AuthInfo> {
-    let mut url =
-        Url::parse("https://sessionserver.mojang.com/session/minecraft/hasJoined").unwrap();
+pub async fn authenticate(session_url: &str, username: &str, server_id: &str) -> Result<AuthInfo> {
+    let mut url = Url::parse(&format!("{}/session/minecraft/hasJoined", session_url.trim_end_matches('/')))
+        .map_err(|err| Error::IO { source: std::io::Error::new(std::io::ErrorKind::InvalidInput, err) })?;
     url.query_pairs_mut()
         .append_pair("username", username)
         .append_pair("serverId", server_id);

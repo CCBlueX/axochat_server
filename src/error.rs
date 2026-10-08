@@ -23,6 +23,8 @@ pub enum Error {
     RustTLSNoMsg,
     #[snafu(display("JWT: {}", source))]
     JWT { source: jsonwebtoken::errors::Error },
+    #[snafu(display("database: {}", source))]
+    Database { source: sea_orm::DbErr },
     #[snafu(display("UUID parsing: {}", source))]
     Uuid { source: uuid::Error },
     #[snafu(display("axochat: {}", source))]
@@ -143,5 +145,11 @@ impl fmt::Display for ClientError {
             ),
             error => f.write_str(error.code()),
         }
+    }
+}
+
+impl From<sea_orm::DbErr> for Error {
+    fn from(source: sea_orm::DbErr) -> Self {
+        Error::Database { source }
     }
 }

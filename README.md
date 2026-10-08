@@ -11,6 +11,7 @@ The server is configured through environment variables, see [.env.example](.env.
 cargo run --release -- start
 ```
 
+It needs a MySQL or MariaDB database; tables are created on startup.
 The Docker image runs in `/data`, where the moderator and ban files are kept; mount a volume there.
 
 `axochat generate <name> [uuid]` prints a JWT for testing.

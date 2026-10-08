@@ -6,6 +6,12 @@ use std::{net::SocketAddr, path::PathBuf, time::Duration};
 #[derive(Args, Clone)]
 pub struct Config {
     #[command(flatten)]
+    pub mojang: MojangConfig,
+
+    #[command(flatten)]
+    pub database: DbConfig,
+
+    #[command(flatten)]
     pub net: NetConfig,
 
     #[command(flatten)]
@@ -90,4 +96,22 @@ pub struct ModConfig {
     /// The file containing the banned users (line separated).
     #[arg(long = "banned-file", env = "BANNED_FILE", default_value = "./banned.txt")]
     pub banned: PathBuf,
+}
+
+#[derive(Args, Clone)]
+pub struct DbConfig {
+    /// The MySQL or MariaDB connection URL.
+    #[arg(long = "database-url", env = "DATABASE_URL", hide_env_values = true)]
+    pub url: String,
+}
+
+#[derive(Args, Clone)]
+pub struct MojangConfig {
+    #[arg(
+        long = "mojang-session-url",
+        env = "MOJANG_SESSION_URL",
+        default_value = "https://sessionserver.mojang.com",
+        hide = true
+    )]
+    pub session_url: String,
 }

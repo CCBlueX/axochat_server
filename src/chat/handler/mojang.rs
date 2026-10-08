@@ -1,9 +1,8 @@
+use super::login::{identify, Verified};
+use crate::chat::{ChatServer, ClientPacket, InternalId, Login, User};
 use crate::error::*;
+use crate::store::IdentityKey;
 use log::*;
-
-use crate::chat::{ChatServer, ClientPacket, InternalId, SuccessReason, User, UserSession, send_message};
-use crate::message::RateLimiter;
-use std::collections::HashSet;
 
 use crate::auth::authenticate;
 use actix::*;
@@ -13,7 +12,7 @@ use uuid::Uuid;
 
 impl ChatServer {
     pub(super) fn handle_request_mojang_info(&mut self, user_id: InternalId) {
-        let Some(session) = self.connections.get_mut(&user_id) else { return };
+        let Some(connection) = self.connections.get_mut(&user_id) else { return };
 
         let mut bytes = [0; 20];
         self.rng.fill_bytes(&mut bytes);
@@ -21,82 +20,47 @@ impl ChatServer {
         bytes[0] &= 0b0111_1111;
 
         let session_hash = crate::auth::encode_sha1_bytes(&bytes);
-        session.session_hash = Some(session_hash.clone());
-
-        send_message(session, ClientPacket::MojangInfo { session_hash }, "mojang info");
+        connection.session_hash = Some(session_hash.clone());
+        self.send(user_id, ClientPacket::MojangInfo { session_hash });
     }
 
-    pub(super) fn login_mojang(
-        &mut self,
-        user_id: InternalId,
-        info: User,
-        ctx: &mut Context<Self>,
-    ) {
-        let Some(session) = self.connections.get_mut(&user_id) else { return };
-
-        if session.is_logged_in() || session.login_pending {
-            info!("User `{}` tried to log in multiple times.", user_id);
-            send_message(session, ClientPacket::error(ClientError::AlreadyLoggedIn), "mojang already logged in");
+    pub(super) fn login_mojang(&mut self, user_id: InternalId, info: User, ctx: &mut Context<Self>) {
+        let Some(connection) = self.connections.get(&user_id) else { return };
+        let Some(session_hash) = connection.session_hash.clone().filter(|_| connection.login == Login::Anonymous) else {
+            if connection.login == Login::Anonymous {
+                info!("User `{}` did not request mojang info, but tried to log in.", user_id);
+                self.send_error(user_id, ClientError::MojangRequestMissing);
+            } else {
+                self.send_error(user_id, ClientError::AlreadyLoggedIn);
+            }
+            return;
+        };
+        if !self.begin_login(user_id) {
             return;
         }
 
-        let Some(session_hash) = session.session_hash.clone() else {
-            info!(
-                "User `{}` did not request mojang info, but tried to log in.",
-                user_id
-            );
-            send_message(session, ClientPacket::error(ClientError::MojangRequestMissing), "mojang info missing");
+        let store = self.store.clone();
+        let session_url = self.config.mojang.session_url.clone();
+        let Some(mut request) = self.identify_request(user_id, IdentityKey::Minecraft(info.uuid), info.name.clone(), None) else {
             return;
         };
 
-        session.login_pending = true;
-        let name = info.name.clone();
-
         ctx.spawn(
-            async move { authenticate(&name, &session_hash).await }
-                .into_actor(self)
-                .map(move |res, actor, _ctx| {
-                    let Some(session) = actor.connections.get_mut(&user_id) else { return };
-                    session.login_pending = false;
+            async move {
+                let profile = authenticate(&session_url, &info.name, &session_hash).await.map_err(|err| {
+                    warn!("Could not authenticate user `{}`: {}", user_id, err);
+                    ClientError::LoginFailed
+                })?;
+                if Uuid::from_str(&profile.id).ok() != Some(info.uuid) {
+                    return Err(ClientError::InvalidId);
+                }
 
-                    let mojang_info = match res {
-                        Ok(mojang_info) => mojang_info,
-                        Err(err) => {
-                            warn!("Could not authenticate user `{}`: {}", user_id, err);
-                            send_message(session, ClientPacket::error(ClientError::LoginFailed), "mojang login failed");
-                            return;
-                        }
-                    };
-
-                    if Uuid::from_str(&mojang_info.id).ok() != Some(info.uuid) {
-                        send_message(session, ClientPacket::error(ClientError::InvalidId), "mojang invalid id");
-                        return;
-                    }
-
-                    info!(
-                        "User `{}` has uuid `{}` and username `{}`",
-                        user_id, mojang_info.id, mojang_info.name
-                    );
-
-                    actor
-                        .users
-                        .entry(mojang_info.name.clone())
-                        .or_insert_with(|| UserSession {
-                            rate_limiter: RateLimiter::new(actor.config.message.clone()),
-                            connections: HashSet::new(),
-                        })
-                        .connections
-                        .insert(user_id);
-
-                    session.user = Some(User {
-                        name: mojang_info.name,
-                        ..info
-                    });
-
-                    send_message(session, ClientPacket::Success {
-                        reason: SuccessReason::Login,
-                    }, "mojang login success");
-                }),
+                request.name = profile.name;
+                let model = identify(store, request).await?;
+                Ok(Verified { model })
+            }
+            .into_actor(self)
+            .map(move |result, actor, _ctx| actor.finish_login(user_id, result, info.allow_messages)),
         );
     }
 }

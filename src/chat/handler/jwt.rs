@@ -1,86 +1,55 @@
+use super::login::{identify, Verified};
+use crate::chat::{ChatServer, ClientPacket, InternalId};
 use crate::error::*;
+use crate::store::IdentityKey;
 use log::*;
 
-use super::{ChatServer, ClientPacket};
-use crate::auth::UserInfo;
-use crate::chat::{InternalId, SuccessReason, User, UserSession, send_message};
-use crate::message::RateLimiter;
-use std::collections::HashSet;
+use actix::*;
 
 impl ChatServer {
     pub(super) fn handle_request_jwt(&mut self, user_id: InternalId) {
-        let Some(session) = self.connections.get(&user_id) else { return };
-        if let Some(auth) = &self.authenticator {
-            if let Some(user) = &session.user {
-                let token = match auth.new_token(UserInfo {
-                    name: user.name.clone(),
-                    uuid: user.uuid,
-                }) {
-                    Ok(token) => token,
-                    Err(err) => {
-                        warn!("Could not create new token for user `{}`: {}", user_id, err);
-                        send_message(session, ClientPacket::error(ClientError::Internal), "jwt creation failed");
-                        return;
-                    }
-                };
+        let Some(auth) = &self.authenticator else {
+            self.send_error(user_id, ClientError::NotSupported);
+            return;
+        };
+        let Some(user) = self.logged_in(user_id) else { return };
 
-                send_message(session, ClientPacket::NewJWT { token }, "new jwt");
-            } else {
-                info!("User `{}` tried to get JWT but is not logged in.", user_id);
-                send_message(session, ClientPacket::error(ClientError::NotLoggedIn), "jwt not logged in");
+        match auth.new_token(self.identity(user).info()) {
+            Ok(token) => {
+                self.send(user_id, ClientPacket::NewJWT { token });
             }
-        } else {
-            info!("User `{}` tried to request not supported JWT", user_id);
-            send_message(session, ClientPacket::error(ClientError::NotSupported), "jwt not supported");
+            Err(err) => {
+                warn!("Could not create new token for user `{}`: {}", user_id, err);
+                self.send_error(user_id, ClientError::Internal);
+            }
         }
     }
 
-    pub(super) fn handle_login_jwt(
-        &mut self,
-        user_id: InternalId,
-        jwt: &str,
-        allow_messages: bool,
-    ) {
-        let Some(session) = self.connections.get_mut(&user_id) else { return };
-        if session.is_logged_in() || session.login_pending {
-            send_message(session, ClientPacket::error(ClientError::AlreadyLoggedIn), "jwt already logged in");
+    pub(super) fn handle_login_jwt(&mut self, user_id: InternalId, jwt: &str, allow_messages: bool, ctx: &mut Context<Self>) {
+        let Some(auth) = &self.authenticator else {
+            self.send_error(user_id, ClientError::NotSupported);
+            return;
+        };
+        let info = match auth.auth(jwt) {
+            Ok(info) => info,
+            Err(err) => {
+                info!("Login of user `{}` using JWT failed: {}", user_id, err);
+                self.send_error(user_id, ClientError::LoginFailed);
+                return;
+            }
+        };
+        if !self.begin_login(user_id) {
             return;
         }
-        if let Some(auth) = &self.authenticator {
-            match auth.auth(jwt) {
-                Ok(info) => {
-                    self.users
-                        .entry(info.name.clone())
-                        .or_insert(UserSession {
-                            rate_limiter: RateLimiter::new(self.config.message.clone()),
-                            connections: HashSet::new(),
-                        })
-                        .connections
-                        .insert(user_id);
 
-                    session.user = Some(User {
-                        name: info.name,
-                        uuid: info.uuid,
-                        allow_messages,
-                    });
-                    
-
-                    send_message(
-                        session,
-                        ClientPacket::Success {
-                            reason: SuccessReason::Login,
-                        },
-                        "jwt login success"
-                    );
-                }
-                Err(err) => {
-                    info!("Login of user `{}` using JWT failed: {}", user_id, err);
-                    send_message(session, ClientPacket::error(ClientError::LoginFailed), "jwt login failed");
-                }
-            };
-        } else {
-            info!("User `{}` tried to request not supported JWT", user_id);
-            send_message(session, ClientPacket::error(ClientError::NotSupported), "jwt login not supported");
-        }
+        let store = self.store.clone();
+        let Some(request) = self.identify_request(user_id, IdentityKey::Minecraft(info.uuid), info.name, None) else {
+            return;
+        };
+        ctx.spawn(
+            async move { identify(store, request).await.map(|model| Verified { model }) }
+                .into_actor(self)
+                .map(move |result, actor, _ctx| actor.finish_login(user_id, result, allow_messages)),
+        );
     }
 }

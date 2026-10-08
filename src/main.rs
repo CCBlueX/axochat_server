@@ -1,10 +1,12 @@
 mod auth;
 mod chat;
 mod config;
+mod entity;
 mod error;
 mod ip;
 mod message;
 mod moderation;
+mod store;
 
 use clap::{Parser, Subcommand};
 use config::Config;
@@ -78,8 +80,12 @@ async fn start_server(config: Config) -> Result<()> {
         Err(err) => warn!("Could not raise the open file limit: {}", err),
     }
 
+    let db = sea_orm::Database::connect(&config.database.url).await?;
+    db.get_schema_registry("axochat::entity::*").sync(&db).await?;
+    let store = store::Store::new(db).start();
+
     let server_config = config.clone();
-    let server = chat::ChatServer::new(server_config).start();
+    let server = chat::ChatServer::new(server_config, store).start();
 
     let server_data = web::Data::new(server);
     let real_ip = web::Data::new(ip::RealIp::new(
