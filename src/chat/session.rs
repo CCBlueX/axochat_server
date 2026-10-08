@@ -8,16 +8,27 @@ use log::*;
 use actix::*;
 use actix_ws as ws;
 use std::future::Future;
+use std::time::{Duration, Instant};
+
+const PING_INTERVAL: Duration = Duration::from_secs(30);
+const PONG_TIMEOUT: Duration = Duration::from_secs(90);
 
 pub struct Session {
     id: InternalId,
     addr: Addr<ChatServer>,
     ws: ws::Session,
+    // old clients never answer pings, so the timeout only applies after the first pong
+    last_pong: Option<Instant>,
 }
 
 impl Session {
     pub fn new(id: InternalId, addr: Addr<ChatServer>, ws: ws::Session) -> Session {
-        Session { id, addr, ws }
+        Session {
+            id,
+            addr,
+            ws,
+            last_pong: None,
+        }
     }
 
     // wait, not spawn: keeps outgoing frames in order
@@ -30,6 +41,17 @@ impl Session {
                 ctx.stop();
             }
         }));
+    }
+
+    fn close(&self, ctx: &mut Context<Self>, reason: Option<ws::CloseReason>) {
+        // a stopping actor does not poll wait futures, so stop after the close frame
+        ctx.wait(
+            self.ws
+                .clone()
+                .close(reason)
+                .into_actor(self)
+                .map(|_, _, ctx| ctx.stop()),
+        );
     }
 }
 
@@ -56,6 +78,15 @@ impl Actor for Session {
                 }
             })
         );
+
+        ctx.run_interval(PING_INTERVAL, |actor, ctx| {
+            if actor.last_pong.is_some_and(|last| last.elapsed() > PONG_TIMEOUT) {
+                info!("Connection `{}` timed out.", actor.id);
+                actor.close(ctx, Some(ws::CloseCode::Away.into()));
+                return;
+            }
+            actor.send(ctx, |mut ws| async move { ws.ping(b"").await });
+        });
     }
 
     fn stopping(&mut self, _ctx: &mut Self::Context) -> Running {
@@ -84,7 +115,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
         debug!("Received message {:?}", msg);
         match msg {
             ws::Message::Ping(msg) => self.send(ctx, |mut ws| async move { ws.pong(&msg).await }),
-            ws::Message::Pong(_msg) => {}
+            ws::Message::Pong(_msg) => self.last_pong = Some(Instant::now()),
             ws::Message::Text(msg) => match serde_json::from_slice::<ServerPacket>(msg.as_ref()) {
                 // do_send queues right away, so packets reach the server in order
                 Ok(packet) => self.addr.do_send(ServerPacketId {
@@ -107,14 +138,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
                 } else {
                     info!("Connection `{}` closed.", self.id);
                 }
-                // a stopping actor does not poll wait futures, so stop after the close frame
-                ctx.wait(
-                    self.ws
-                        .clone()
-                        .close(reason)
-                        .into_actor(self)
-                        .map(|_, _, ctx| ctx.stop()),
-                );
+                self.close(ctx, reason);
             }
             ws::Message::Continuation(_) => {
                 warn!("Continuation frames are not supported.");
