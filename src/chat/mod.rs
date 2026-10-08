@@ -10,7 +10,6 @@ pub use session::Frame;
 use packet::*;
 
 use crate::api::{Api, RoleDefinition};
-use crate::auth::{Authenticator, UserInfo};
 use crate::config::Config;
 use crate::entity::user;
 use crate::error::ClientError;
@@ -102,7 +101,6 @@ pub struct ChatServer {
     logins: Arc<Semaphore>,
     roles: HashMap<String, RoleDefinition>,
     rng: Hc128Rng,
-    authenticator: Option<Authenticator>,
     validator: MessageValidator,
     moderation: Moderation,
     config: Config,
@@ -122,7 +120,6 @@ impl ChatServer {
             logins: Arc::new(Semaphore::new(CONCURRENT_LOGINS)),
             roles: HashMap::new(),
             rng: Hc128Rng::try_from_rng(&mut SysRng).expect("could not initialize hc128 rng"),
-            authenticator: Authenticator::new(&config.auth),
             validator: MessageValidator::new(config.message.clone()),
             moderation: Moderation::new(config.moderation.clone())
                 .expect("could not start moderation"),

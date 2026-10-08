@@ -1,6 +1,6 @@
 use super::Frame;
-use crate::auth::UserInfo;
 use crate::error::ClientError;
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -18,9 +18,6 @@ pub enum Protocol {
 pub enum ClientPacket {
     MojangInfo {
         session_hash: String,
-    },
-    NewJWT {
-        token: String,
     },
     Message {
         author_info: UserInfo,
@@ -82,7 +79,7 @@ impl ClientPacket {
 pub enum ServerPacket {
     RequestMojangInfo,
     LoginMojang(User),
-    LoginJWT { token: String, allow_messages: bool },
+    LoginJWT(IgnoredAny),
     LoginAccount { token: String, allow_messages: bool },
     RequestJWT,
     Message { content: String },
@@ -91,6 +88,13 @@ pub enum ServerPacket {
     UnbanUser { user: Uuid },
     RequestUserCount,
     Hello { protocol: u32 },
+}
+
+/// The author of a v1 message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserInfo {
+    pub name: String,
+    pub uuid: Uuid,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -131,10 +135,6 @@ mod tests {
             (
                 ClientPacket::MojangInfo { session_hash: "88e16a1019277b15d58faf0541e11910eb756f6".into() },
                 json!({ "m": "MojangInfo", "c": { "session_hash": "88e16a1019277b15d58faf0541e11910eb756f6" } }),
-            ),
-            (
-                ClientPacket::NewJWT { token: "token".into() },
-                json!({ "m": "NewJWT", "c": { "token": "token" } }),
             ),
             (
                 ClientPacket::Message { author_info: notch(), content: "Hello, World!".into() },
@@ -204,7 +204,7 @@ mod tests {
         ));
         assert!(matches!(
             decode(json!({ "m": "LoginJWT", "c": { "token": "token", "allow_messages": false } })),
-            ServerPacket::LoginJWT { ref token, allow_messages: false } if token == "token"
+            ServerPacket::LoginJWT(_)
         ));
         assert!(matches!(
             decode(json!({ "m": "Message", "c": { "content": "Hello, World!" } })),

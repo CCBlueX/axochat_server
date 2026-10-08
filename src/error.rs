@@ -21,8 +21,6 @@ pub enum Error {
     #[cfg(feature = "rustls-tls")]
     #[snafu(display("rustls"))]
     RustTLSNoMsg,
-    #[snafu(display("JWT: {}", source))]
-    JWT { source: jsonwebtoken::errors::Error },
     #[snafu(display("database: {}", source))]
     Database { source: sea_orm::DbErr },
     #[snafu(display("UUID parsing: {}", source))]
@@ -53,12 +51,6 @@ impl From<actix_web::Error> for Error {
 impl From<openssl::error::ErrorStack> for Error {
     fn from(source: openssl::error::ErrorStack) -> Self {
         Error::OpenSSL { source }
-    }
-}
-
-impl From<jsonwebtoken::errors::Error> for Error {
-    fn from(source: jsonwebtoken::errors::Error) -> Self {
-        Error::JWT { source }
     }
 }
 

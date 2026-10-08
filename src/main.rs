@@ -16,7 +16,6 @@ use log::*;
 
 use actix::*;
 use actix_web::{web, App, HttpServer};
-use uuid::Uuid;
 
 #[cfg(feature = "rustls-tls")]
 use rustls::{
@@ -40,13 +39,6 @@ struct Opt {
 enum Command {
     /// Starts the axochat server.
     Start,
-    /// Generates a JWT which can be used for logging in.
-    /// This should only be used for testing.
-    /// If you want to generate JWT for non-testing purposes, send a RequestJWT packet to the server.
-    Generate {
-        name: String,
-        uuid: Option<Uuid>,
-    },
 }
 
 #[actix_web::main]
@@ -56,21 +48,6 @@ async fn main() -> Result<()> {
     let Opt { config, command } = Opt::parse();
     match command {
         Command::Start => start_server(config).await,
-        Command::Generate { name, uuid } => {
-            let auth = match auth::Authenticator::new(&config.auth) {
-                Some(auth) => auth,
-                None => {
-                    eprintln!("Set JWT_SECRET to generate tokens.");
-                    return Err(ClientError::NotSupported.into());
-                }
-            };
-            let token = auth.new_token(auth::UserInfo {
-                name,
-                uuid: uuid.unwrap_or_else(|| Uuid::from_u128(0)),
-            })?;
-            println!("{}", token);
-            Ok(())
-        }
     }
 }
 

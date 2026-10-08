@@ -12,6 +12,4 @@ cargo run --release -- start
 ```
 
 It needs a MySQL or MariaDB database; tables are created on startup.
-The Docker image runs in `/data`, where the moderator and ban files are kept; mount a volume there.
-
-`axochat generate <name> [uuid]` prints a JWT for testing.
+The Docker image runs in `/data`, where the ban file is kept; mount a volume there.

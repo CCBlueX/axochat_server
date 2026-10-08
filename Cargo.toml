@@ -27,7 +27,6 @@ actix-ws = "0.4"
 bytestring = "1"
 actix = "0.13"
 
-jsonwebtoken = { version = "11.1", features = ["aws_lc_rs"] }
 
 rustls = { version = "0.23", optional = true }
 openssl = { version = "0.10", features = ["v110"], optional = true }
