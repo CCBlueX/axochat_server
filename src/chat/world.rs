@@ -1,6 +1,7 @@
 use super::UserId;
 use crate::ip::canonical;
 
+use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::net::IpAddr;
@@ -41,6 +42,8 @@ pub struct Location {
     pub key: Option<String>,
     /// Shown to friends and the party; `None` for private addresses.
     pub address: Option<String>,
+    /// A private address, only for users behind the same public address.
+    pub lan_address: Option<String>,
     pub dimension: Option<String>,
     /// 0 when the server does not tell.
     pub seed: i64,
@@ -51,8 +54,16 @@ pub struct Location {
     pub tab: HashSet<UserId>,
 }
 
-/// The address normalized for display and the key servers are matched by.
-pub fn server_key(address: &str, client: IpAddr) -> Option<(Option<String>, String)> {
+#[derive(Debug, PartialEq)]
+pub struct ServerAddress {
+    /// Normalized for display.
+    pub display: String,
+    /// What servers are matched by.
+    pub key: String,
+    pub private: bool,
+}
+
+pub fn server_key(address: &str, client: IpAddr) -> Option<ServerAddress> {
     let address = address.trim().to_lowercase();
     let (host, port) = match address.strip_prefix('[') {
         Some(rest) => {
@@ -83,12 +94,15 @@ pub fn server_key(address: &str, client: IpAddr) -> Option<(Option<String>, Stri
         .find_map(|prefix| host.strip_prefix(prefix).filter(|rest| rest.contains('.')))
         .unwrap_or(bracketed.as_str());
     let key = format!("{}:{}", stripped, port);
-    if private {
-        // a LAN address only means the same server behind the same public address
-        Some((None, format!("{}@{}", key, canonical(client))))
-    } else {
-        Some((Some(display), key))
-    }
+    // a LAN address only means the same server behind the same public address
+    let key = if private { format!("{}@{}", key, canonical(client)) } else { key };
+    Some(ServerAddress { display, key, private })
+}
+
+/// The UUID an offline-mode server gives a player name, as Java's `UUID.nameUUIDFromBytes`.
+pub fn offline_uuid(name: &str) -> Uuid {
+    let digest = Md5::digest(format!("OfflinePlayer:{}", name).as_bytes());
+    uuid::Builder::from_md5_bytes(digest.into()).into_uuid()
 }
 
 /// How `b` relates to `a`, both being someone's location if in game.
@@ -142,10 +156,10 @@ mod tests {
     }
 
     fn at(server: &str, dimension: &str, seed: i64, epoch: Option<i64>) -> Location {
-        let (address, key) = server_key(server, client()).unwrap();
+        let server = server_key(server, client()).unwrap();
         Location {
-            key: Some(key),
-            address,
+            key: Some(server.key),
+            address: Some(server.display),
             dimension: Some(dimension.into()),
             seed,
             epoch,
@@ -159,16 +173,24 @@ mod tests {
 
     #[test]
     fn keys() {
-        let key = |address: &str| server_key(address, client()).unwrap();
-        assert_eq!(key("Hypixel.NET."), (Some("hypixel.net".into()), "hypixel.net:25565".into()));
-        assert_eq!(key("mc.hypixel.net:25565"), (Some("mc.hypixel.net".into()), "hypixel.net:25565".into()));
+        let key = |address: &str| {
+            let server = server_key(address, client()).unwrap();
+            (server.display, server.key, server.private)
+        };
+        assert_eq!(key("Hypixel.NET."), ("hypixel.net".into(), "hypixel.net:25565".into(), false));
+        assert_eq!(key("mc.hypixel.net:25565"), ("mc.hypixel.net".into(), "hypixel.net:25565".into(), false));
         assert_eq!(key("play.example.org:25566").1, "example.org:25566");
         assert_eq!(key("mc.com").1, "mc.com:25565", "a prefix is only stripped when a domain remains");
-        assert_eq!(key("[2001:db8::1]:25570"), (Some("[2001:db8::1]:25570".into()), "[2001:db8::1]:25570".into()));
-        assert_eq!(key("192.168.1.20"), (None, "192.168.1.20:25565@203.0.113.7".into()));
-        assert_eq!(key("localhost:25570").0, None);
+        assert_eq!(key("[2001:db8::1]:25570"), ("[2001:db8::1]:25570".into(), "[2001:db8::1]:25570".into(), false));
+        assert_eq!(key("192.168.1.20"), ("192.168.1.20".into(), "192.168.1.20:25565@203.0.113.7".into(), true));
+        assert!(key("localhost:25570").2);
         assert!(server_key("", client()).is_none());
         assert!(server_key("host:notaport", client()).is_none());
+    }
+
+    #[test]
+    fn offline_uuids() {
+        assert_eq!(offline_uuid("Notch").to_string(), "b50ad385-829d-3141-a216-7e7d7539ba7f");
     }
 
     #[test]

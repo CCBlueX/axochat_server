@@ -533,7 +533,8 @@ party or a member's relation changes.
 ```
 
 ### PartyInvite
-`expires` is in milliseconds since the Unix epoch.
+`expires` is in milliseconds since the Unix epoch. Inviting someone again while
+an invite is pending sends nothing.
 
 ```json
 { "m": "PartyInvite", "c": { "party": "0192f0e6-...", "from": { "id": "...", "kind": "account", "name": "Izuna", "uuid": "..." }, "expires": 1791446460000 } }
@@ -541,7 +542,9 @@ party or a member's relation changes.
 
 ### PartyWarp
 The leader asks the party to join their server. Clients confirm first.
-The leader must play on a public address.
+Members already on that server are skipped; a private address only goes to
+members behind the same public address. The leader receives it too, as
+confirmation. At most once per 10 seconds.
 
 ```json
 { "m": "PartyWarp", "c": { "from": { "id": "...", "kind": "account", "name": "Izuna", "uuid": "..." }, "server": "hypixel.net" } }
@@ -679,6 +682,9 @@ A party has at most 8 members. Inviting without a party creates one. Leader
 and admins invite and kick; the leader promotes, transfers, locks, mutes,
 toggles PvP, warps and disbands. Invites expire after 60 seconds; members who
 go offline stay for 5 minutes.
+Accepting an invite while in another party leaves that party first; a failed
+accept leaves you where you were. A locked party drops pending invites and
+takes no new members.
 
 | `action` | Fields |
 |---|---|

@@ -36,6 +36,7 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "rus
 rlimit = "0.11"
 sea-orm = { version = "2.0", default-features = false, features = ["sqlx-mysql", "runtime-tokio", "macros", "with-uuid", "entity-registry", "schema-sync"] }
 tokio = { version = "1", default-features = false, features = ["sync"] }
+md-5 = { version = "0.11", default-features = false }
 
 [dev-dependencies]
 actix-codec = "0.5"

@@ -11,6 +11,7 @@ pub const MAX_MEMBERS: usize = 8;
 pub const INVITE_TIME: i64 = 60_000;
 /// Members who go offline stay this long.
 pub const OFFLINE_GRACE: i64 = 5 * 60_000;
+const WARP_COOLDOWN: i64 = 10_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -42,6 +43,7 @@ pub struct Party {
     pub locked: bool,
     pub pvp: bool,
     pub invites: Vec<Invite>,
+    warped_at: i64,
 }
 
 impl Party {
@@ -133,7 +135,7 @@ impl Parties {
     /// Founds a party first if `user` has none. Without a target, everything happens but the invite,
     /// so it looks the same to `user`. Returns whether the target is to be told; a pending invite
     /// is not repeated.
-    pub fn invite(&mut self, user: UserId, target: Option<UserId>, new_id: PartyId, now: i64) -> Result<PartyId, ClientError> {
+    pub fn invite(&mut self, user: UserId, target: Option<UserId>, new_id: PartyId, now: i64) -> Result<(PartyId, bool), ClientError> {
         if target == Some(user) {
             return Err(ClientError::NotPermitted);
         }
@@ -152,6 +154,7 @@ impl Parties {
                     locked: false,
                     pvp: false,
                     invites: Vec::new(),
+                    warped_at: 0,
                 },
             );
             self.member_of.insert(user, new_id);
@@ -168,21 +171,24 @@ impl Parties {
         if party.members.len() >= MAX_MEMBERS {
             return Err(ClientError::PartyFull);
         }
-        if let Some(target) = target {
-            party.invites.retain(|invite| invite.user != target);
-            party.invites.push(Invite {
-                user: target,
-                expires: now + INVITE_TIME,
-            });
+        let Some(target) = target else { return Ok((party.id, false)) };
+        if party.invites.iter().any(|invite| invite.user == target && invite.expires > now) {
+            return Ok((party.id, false));
         }
-        Ok(party.id)
+        party.invites.retain(|invite| invite.user != target);
+        party.invites.push(Invite {
+            user: target,
+            expires: now + INVITE_TIME,
+        });
+        Ok((party.id, true))
     }
 
-    pub fn accept(&mut self, user: UserId, id: PartyId, now: i64) -> Result<Change, ClientError> {
-        if self.member_of.contains_key(&user) {
+    /// Leaves the current party first.
+    pub fn accept(&mut self, user: UserId, id: PartyId, now: i64) -> Result<Vec<Change>, ClientError> {
+        let party = self.parties.get(&id).ok_or(ClientError::NoInvite)?;
+        if party.member(user).is_some() {
             return Err(ClientError::AlreadyInParty);
         }
-        let party = self.parties.get_mut(&id).ok_or(ClientError::NoInvite)?;
         if !party.invites.iter().any(|invite| invite.user == user && invite.expires > now) {
             return Err(ClientError::NoInvite);
         }
@@ -192,6 +198,12 @@ impl Parties {
         if party.members.len() >= MAX_MEMBERS {
             return Err(ClientError::PartyFull);
         }
+
+        let mut changes = Vec::new();
+        if let Some(&previous) = self.member_of.get(&user) {
+            changes.push(self.remove(previous, user));
+        }
+        let party = self.parties.get_mut(&id).expect("checked above");
         party.invites.retain(|invite| invite.user != user);
         party.members.push(Member {
             user,
@@ -201,10 +213,11 @@ impl Parties {
             offline_since: None,
         });
         self.member_of.insert(user, id);
-        Ok(Change {
+        changes.push(Change {
             party: Some(id),
             ..Change::default()
-        })
+        });
+        Ok(changes)
     }
 
     pub fn decline(&mut self, user: UserId, id: PartyId) -> Result<(), ClientError> {
@@ -305,6 +318,16 @@ impl Parties {
         Ok(party.id)
     }
 
+    pub fn warp(&mut self, user: UserId, now: i64) -> Result<PartyId, ClientError> {
+        let party = self.own_mut(user)?;
+        party.require(user, true)?;
+        if now - party.warped_at < WARP_COOLDOWN {
+            return Err(ClientError::RateLimited);
+        }
+        party.warped_at = now;
+        Ok(party.id)
+    }
+
     pub fn disband(&mut self, user: UserId) -> Result<Change, ClientError> {
         let party = self.own_mut(user)?;
         party.require(user, true)?;
@@ -365,13 +388,45 @@ mod tests {
         let mut parties = party();
         let guest = Uuid::from_u128(9);
         assert_eq!(parties.invite(MEMBER, Some(guest), PARTY, 3).unwrap_err(), ClientError::NotPermitted);
-        assert_eq!(parties.invite(ADMIN, Some(guest), PARTY, 3).unwrap(), PARTY);
+        assert_eq!(parties.invite(ADMIN, Some(guest), PARTY, 3).unwrap(), (PARTY, true));
         assert_eq!(parties.accept(guest, PARTY, 3 + INVITE_TIME).unwrap_err(), ClientError::NoInvite, "expired");
         parties.invite(ADMIN, Some(guest), PARTY, 4).unwrap();
         parties.lock(LEADER, true).unwrap();
         assert_eq!(parties.accept(guest, PARTY, 5).unwrap_err(), ClientError::NoInvite, "locking drops invites");
         assert_eq!(parties.invite(LEADER, Some(guest), PARTY, 6).unwrap_err(), ClientError::PartyLocked);
         assert_eq!(parties.accept(MEMBER, PARTY, 6).unwrap_err(), ClientError::AlreadyInParty);
+    }
+
+    #[test]
+    fn pending_invites_are_not_repeated() {
+        let mut parties = party();
+        let guest = Uuid::from_u128(9);
+        assert!(parties.invite(LEADER, Some(guest), PARTY, 3).unwrap().1);
+        assert!(!parties.invite(ADMIN, Some(guest), PARTY, 4).unwrap().1, "still pending");
+        assert!(parties.invite(LEADER, Some(guest), PARTY, 3 + INVITE_TIME).unwrap().1, "expired, so a new one");
+    }
+
+    #[test]
+    fn accepting_switches_parties() {
+        let mut parties = party();
+        let (host, other) = (Uuid::from_u128(20), Uuid::from_u128(200));
+        parties.invite(host, Some(LEADER), other, 3).unwrap();
+        assert_eq!(parties.accept(MEMBER, other, 4).unwrap_err(), ClientError::NoInvite);
+        assert_eq!(parties.of(MEMBER).unwrap().id, PARTY, "a failed switch keeps the party");
+
+        let changes = parties.accept(LEADER, other, 4).unwrap();
+        assert_eq!(changes[0].removed, vec![LEADER]);
+        assert_eq!(parties.of(LEADER).unwrap().id, other);
+        assert_eq!(parties.of(MEMBER).unwrap().leader(), ADMIN, "the old party goes on");
+    }
+
+    #[test]
+    fn warp_cooldown() {
+        let mut parties = party();
+        assert_eq!(parties.warp(ADMIN, 20_000).unwrap_err(), ClientError::NotPermitted);
+        parties.warp(LEADER, 20_000).unwrap();
+        assert_eq!(parties.warp(LEADER, 25_000).unwrap_err(), ClientError::RateLimited);
+        parties.warp(LEADER, 30_000).unwrap();
     }
 
     #[test]

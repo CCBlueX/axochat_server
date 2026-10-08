@@ -444,6 +444,7 @@ dependencies = [
  "futures-util",
  "humantime",
  "log",
+ "md-5",
  "openssl",
  "rand 0.10.3",
  "rand_hc",

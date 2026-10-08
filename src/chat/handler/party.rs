@@ -1,6 +1,6 @@
 use super::message::send_frame;
 use crate::chat::party::{Change, PartyId};
-use crate::chat::world::{contradicts_seed, relation, server_key, Location, Player, Relation};
+use crate::chat::world::{contradicts_seed, offline_uuid, relation, server_key, Location, Player, Relation};
 use crate::chat::{
     new_id, now_ms, Channel, ChatServer, ClientPacket, Connection, Frame, InternalId, MemberState, PartyAction,
     PartyMemberView, PartyView, Position, Protocol, Scope, UserId, World,
@@ -29,8 +29,8 @@ impl ChatServer {
                     .filter(|target| actor.users.contains_key(target) && !actor.social.has_blocked(*target, user));
                 let new_party = new_id(&mut actor.rng);
                 match actor.parties.invite(user, target, new_party, now) {
-                    Ok(party) => {
-                        if let Some(target) = target {
+                    Ok((party, notify)) => {
+                        if let Some(target) = target.filter(|_| notify) {
                             let invite = ClientPacket::PartyInvite {
                                 party,
                                 from: actor.user_ref(user),
@@ -44,8 +44,10 @@ impl ChatServer {
                 }
             }),
             PartyAction::Accept { party } => match self.parties.accept(user, party, now) {
-                Ok(change) => {
-                    self.apply_change(change);
+                Ok(changes) => {
+                    for change in changes {
+                        self.apply_change(change);
+                    }
                     self.send_member_states(user);
                 }
                 Err(error) => self.send_error(user_id, error),
@@ -127,7 +129,10 @@ impl ChatServer {
 
     fn apply_change(&mut self, change: Change) {
         for removed in &change.removed {
-            self.member_states.remove(removed);
+            // someone who switched parties keeps what they shared
+            if self.parties.of(*removed).is_none() {
+                self.member_states.remove(removed);
+            }
             self.send_party(*removed);
         }
         if let Some(party) = change.party.filter(|_| !change.disbanded) {
@@ -135,6 +140,7 @@ impl ChatServer {
         }
     }
 
+    /// The leader sees the warp echoed; a private address only goes to members behind the same public address.
     fn warp(&mut self, user_id: InternalId, user: UserId) {
         let Some(party) = self.parties.of(user) else {
             self.send_error(user_id, ClientError::NotInParty);
@@ -144,18 +150,39 @@ impl ChatServer {
             self.send_error(user_id, ClientError::NotPermitted);
             return;
         }
-        // private addresses never leave the server
-        let Some(server) = self.game_location(user).and_then(|location| location.address.clone()) else {
+        let members: Vec<UserId> = party.users().filter(|member| *member != user).collect();
+        let Some(location) = self
+            .game_location(user)
+            .filter(|location| location.address.is_some() || location.lan_address.is_some())
+        else {
             self.send(user_id, ClientPacket::error_with(ClientError::NotSupported, "server"));
             return;
         };
-        let packet = ClientPacket::PartyWarp {
-            from: self.user_ref(user),
-            server,
-        };
-        let members: Vec<UserId> = party.users().filter(|member| *member != user).collect();
+        let (key, public, lan) = (location.key.clone(), location.address.clone(), location.lan_address.clone());
+        let network = self
+            .users
+            .get(&user)
+            .and_then(|online| online.game)
+            .and_then(|game| self.connections.get(&game))
+            .map(|connection| connection.ip);
+        if let Err(error) = self.parties.warp(user, now_ms()) {
+            self.send_error(user_id, error);
+            return;
+        }
+
+        let from = self.user_ref(user);
         for member in members {
-            self.send_user_v2(member, packet.clone());
+            if self.game_location(member).is_some_and(|theirs| theirs.key.is_some() && theirs.key == key) {
+                continue;
+            }
+            let same_network = network.is_some_and(|ip| self.online_connections(member).any(|(_, connection)| connection.ip == ip));
+            let server = if same_network { lan.clone().or_else(|| public.clone()) } else { public.clone() };
+            if let Some(server) = server {
+                self.send_user_v2(member, ClientPacket::PartyWarp { from: from.clone(), server });
+            }
+        }
+        if let Some(server) = public.or(lan) {
+            self.send_user_v2(user, ClientPacket::PartyWarp { from, server });
         }
     }
 
@@ -266,9 +293,20 @@ impl ChatServer {
             return;
         }
 
-        let (address, key) = match server.as_deref().and_then(|server| server_key(server, connection.ip)) {
-            Some((address, key)) => (address, Some(key)),
-            None => (None, None),
+        let (address, lan_address, key) = match server.as_deref().and_then(|server| server_key(server, connection.ip)) {
+            Some(server) if server.private => (None, Some(server.display), Some(server.key)),
+            Some(server) => (Some(server.display), None, Some(server.key)),
+            None => (None, None, None),
+        };
+        // a proven Minecraft session vouches for the player: its own UUID, or what an offline-mode server makes of its name
+        let player = match &connection.minecraft {
+            Some(proven) => player
+                .filter(|player| player.uuid == proven.uuid || player.uuid == offline_uuid(&proven.name))
+                .map(|player| Player {
+                    uuid: player.uuid,
+                    name: proven.name.clone(),
+                }),
+            None => player,
         };
         let previous = connection.location.take();
         let (dimension, seed, epoch) = match world {
@@ -292,6 +330,7 @@ impl ChatServer {
         connection.location = Some(Location {
             key,
             address,
+            lan_address,
             dimension,
             seed,
             epoch,

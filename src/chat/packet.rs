@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const PROTOCOL: u32 = 2;
+/// Beyond the largest world border; also rules out NaN and infinity.
+const MAX_COORDINATE: f64 = 30_000_000.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Protocol {
@@ -144,7 +146,7 @@ pub struct Position {
 
 impl Position {
     pub fn is_valid(&self) -> bool {
-        [self.x, self.y, self.z].iter().all(|v| v.is_finite())
+        [self.x, self.y, self.z].iter().all(|v| v.abs() <= MAX_COORDINATE)
             && self.yaw.is_finite()
             && self.pitch.is_finite()
             && self.dimension.as_ref().is_none_or(|dimension| dimension.len() <= 64)
