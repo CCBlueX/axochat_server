@@ -87,6 +87,10 @@ pub enum ClientError {
     InvalidPacket,
     Muted,
     UnknownUser,
+    AlreadyFriends,
+    NotFriends,
+    NoInvite,
+    RequestsDisabled,
 }
 
 impl ClientError {
@@ -112,6 +116,10 @@ impl ClientError {
             InvalidPacket => "InvalidPacket",
             Muted => "Muted",
             UnknownUser => "UnknownUser",
+            AlreadyFriends => "AlreadyFriends",
+            NotFriends => "NotFriends",
+            NoInvite => "NoInvite",
+            RequestsDisabled => "RequestsDisabled",
         }
     }
 

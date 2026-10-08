@@ -68,3 +68,46 @@ impl MessageValidator {
         Ok(())
     }
 }
+
+/// A token bucket for packets that are not chat messages.
+pub struct ActionLimiter {
+    burst: f64,
+    per_second: f64,
+    tokens: f64,
+    last: Instant,
+}
+
+impl ActionLimiter {
+    pub fn new(burst: u32, per_second: f64) -> ActionLimiter {
+        ActionLimiter {
+            burst: burst as f64,
+            per_second,
+            tokens: burst as f64,
+            last: Instant::now(),
+        }
+    }
+
+    pub fn allow(&mut self) -> bool {
+        let now = Instant::now();
+        self.tokens = (self.tokens + now.duration_since(self.last).as_secs_f64() * self.per_second).min(self.burst);
+        self.last = now;
+        if self.tokens >= 1.0 {
+            self.tokens -= 1.0;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ActionLimiter;
+
+    #[test]
+    fn action_limiter() {
+        let mut limiter = ActionLimiter::new(3, 0.0);
+        assert!(limiter.allow() && limiter.allow() && limiter.allow());
+        assert!(!limiter.allow());
+    }
+}

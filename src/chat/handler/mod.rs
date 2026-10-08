@@ -1,5 +1,6 @@
 mod account;
 mod punish;
+mod social;
 mod count;
 mod hello;
 mod jwt;
@@ -54,6 +55,20 @@ impl Handler<ServerPacketId> for ChatServer {
             }
             ServerPacket::Pardon { user, ip } => {
                 self.handle_pardon(user_id, user, ip, ctx);
+            }
+            ServerPacket::Settings {
+                allow_messages,
+                hide_server,
+                accept_friend_requests,
+                server_chat,
+            } => {
+                self.handle_settings(user_id, allow_messages, hide_server, accept_friend_requests, server_chat);
+            }
+            ServerPacket::Friend { action, user } => {
+                self.handle_friend(user_id, action, user, ctx);
+            }
+            ServerPacket::Block { user, blocked } => {
+                self.handle_block(user_id, user, blocked, ctx);
             }
             ServerPacket::RequestPunishments { user } => {
                 self.handle_request_punishments(user_id, user, ctx);

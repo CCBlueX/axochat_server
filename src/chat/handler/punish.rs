@@ -117,7 +117,7 @@ impl ChatServer {
 
         match (user, ip) {
             (Some(query), _) => self.resolve_user(ctx, query.clone(), move |actor, _ctx, resolved| {
-                let Some(Resolved { identity, last_ip }) = resolved else {
+                let Some(Resolved { identity, last_ip, .. }) = resolved else {
                     actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, query));
                     return;
                 };

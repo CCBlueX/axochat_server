@@ -52,6 +52,55 @@ pub enum ClientPacket {
         user: UserRef,
         punishments: Vec<PunishmentView>,
     },
+    Welcome {
+        user: Author,
+        staff: bool,
+    },
+    Settings(SettingsView),
+    Friends {
+        friends: Vec<FriendView>,
+        incoming: Vec<UserRef>,
+        outgoing: Vec<UserRef>,
+    },
+    Presence {
+        user: Uuid,
+        online: bool,
+        server: Option<String>,
+    },
+    Blocks {
+        users: Vec<UserRef>,
+    },
+}
+
+#[derive(Serialize, Clone)]
+pub struct Author {
+    #[serde(flatten)]
+    pub user: UserRef,
+    pub roles: Vec<RoleView>,
+    pub highlight: bool,
+}
+
+#[derive(Serialize, Clone)]
+pub struct RoleView {
+    pub id: String,
+    pub name: String,
+    pub staff: bool,
+}
+
+#[derive(Serialize, Clone)]
+pub struct SettingsView {
+    pub allow_messages: bool,
+    pub hide_server: bool,
+    pub accept_friend_requests: bool,
+    pub server_chat: bool,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FriendView {
+    pub user: UserRef,
+    pub since: i64,
+    pub online: bool,
+    pub server: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -140,6 +189,23 @@ pub enum ServerPacket {
     },
     Pardon { user: Option<String>, ip: Option<String> },
     RequestPunishments { user: String },
+    Settings {
+        allow_messages: Option<bool>,
+        hide_server: Option<bool>,
+        accept_friend_requests: Option<bool>,
+        server_chat: Option<bool>,
+    },
+    Friend { action: FriendAction, user: String },
+    Block { user: String, blocked: bool },
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FriendAction {
+    Request,
+    Accept,
+    Decline,
+    Remove,
 }
 
 /// The author of a v1 message.

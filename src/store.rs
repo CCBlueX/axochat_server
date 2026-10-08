@@ -1,8 +1,8 @@
-use crate::entity::{punishment, user};
+use crate::entity::{punishment, relation, user};
 use log::*;
 
 use actix::prelude::*;
-use sea_orm::sea_query::Expr;
+use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder, Set,
     TransactionTrait,
@@ -112,6 +112,9 @@ pub enum Write {
     Punish(punishment::Model),
     Revoke { ids: Vec<Uuid>, by: Option<Uuid>, at: i64 },
     ForgetIps { seen_before: i64 },
+    SetRelation { user: Uuid, target: Uuid, kind: relation::Kind, at: i64 },
+    RemoveRelation { user: Uuid, target: Uuid },
+    Settings { user: Uuid, hide_server: bool, accept_friend_requests: bool },
 }
 
 const ATTEMPTS: u32 = 3;
@@ -158,9 +161,58 @@ async fn apply(db: &DatabaseConnection, writes: &[Write]) -> Result<(), DbErr> {
                     .exec(&txn)
                     .await?;
             }
+            Write::SetRelation { user, target, kind, at } => {
+                relation::Entity::insert(relation::ActiveModel {
+                    user_id: Set(user),
+                    target_id: Set(target),
+                    kind: Set(kind),
+                    created_at: Set(at),
+                })
+                .on_conflict(
+                    OnConflict::columns([relation::Column::UserId, relation::Column::TargetId])
+                        .update_columns([relation::Column::Kind, relation::Column::CreatedAt])
+                        .to_owned(),
+                )
+                .exec(&txn)
+                .await?;
+            }
+            Write::RemoveRelation { user, target } => {
+                relation::Entity::delete_by_id((user, target)).exec(&txn).await?;
+            }
+            Write::Settings { user, hide_server, accept_friend_requests } => {
+                user::Entity::update_many()
+                    .col_expr(user::Column::HideServer, Expr::value(hide_server))
+                    .col_expr(user::Column::AcceptFriendRequests, Expr::value(accept_friend_requests))
+                    .filter(user::Column::Id.eq(user))
+                    .exec(&txn)
+                    .await?;
+            }
         }
     }
     txn.commit().await
+}
+
+/// The social graph and everyone in it.
+#[derive(Message)]
+#[rtype(result = "Result<(Vec<relation::Model>, Vec<user::Model>), DbErr>")]
+pub struct LoadSocial;
+
+impl Handler<LoadSocial> for Store {
+    type Result = AtomicResponse<Self, Result<(Vec<relation::Model>, Vec<user::Model>), DbErr>>;
+
+    fn handle(&mut self, _msg: LoadSocial, _ctx: &mut Context<Self>) -> Self::Result {
+        atomic!(self, db => {
+            let relations = relation::Entity::find().all(&db).await?;
+            let mut ids: Vec<Uuid> = relations.iter().flat_map(|r| [r.user_id, r.target_id]).collect();
+            ids.sort_unstable();
+            ids.dedup();
+            let mut users = Vec::with_capacity(ids.len());
+            for chunk in ids.chunks(1000) {
+                users.extend(user::Entity::find().filter(user::Column::Id.is_in(chunk.to_vec())).all(&db).await?);
+            }
+            Ok((relations, users))
+        })
+    }
 }
 
 #[derive(Message)]

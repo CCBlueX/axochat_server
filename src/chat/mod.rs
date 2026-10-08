@@ -3,18 +3,20 @@ mod handler;
 mod id;
 mod packet;
 mod session;
+mod social;
 
 pub use id::*;
 pub use session::Frame;
 
 use packet::*;
+use social::Social;
 
 use crate::api::{Api, RoleDefinition};
 use crate::config::Config;
-use crate::entity::user;
+use crate::entity::{relation, user};
 use crate::error::ClientError;
 use crate::ip::RealIp;
-use crate::message::{MessageValidator, RateLimiter};
+use crate::message::{ActionLimiter, MessageValidator, RateLimiter};
 use crate::moderation::{Moderation, Punishment};
 use crate::store::{FindUser, Persist, Store, Write};
 use log::*;
@@ -94,13 +96,15 @@ impl Identity {
 pub struct ChatServer {
     connections: HashMap<InternalId, Connection>,
     users: HashMap<UserId, OnlineUser>,
-    /// Everyone seen since startup.
+    /// Everyone seen since startup or related to someone.
     directory: HashMap<UserId, Identity>,
 
     store: Addr<Store>,
     api: Arc<Api>,
     logins: Arc<Semaphore>,
-    roles: HashMap<String, RoleDefinition>,
+    /// In the order of the Service API, which is the order prefixes are shown in.
+    roles: Vec<RoleDefinition>,
+    social: Social,
     rng: Hc128Rng,
     validator: MessageValidator,
     moderation: Moderation,
@@ -110,16 +114,22 @@ pub struct ChatServer {
 }
 
 impl ChatServer {
-    pub fn new(config: Config, store: Addr<Store>, punishments: Vec<Punishment>) -> ChatServer {
+    pub fn new(
+        config: Config,
+        store: Addr<Store>,
+        punishments: Vec<Punishment>,
+        (relations, related): (Vec<relation::Model>, Vec<user::Model>),
+    ) -> ChatServer {
         ChatServer {
             connections: HashMap::new(),
             users: HashMap::new(),
-            directory: HashMap::new(),
+            directory: related.iter().map(|model| (model.id, Identity::of(model))).collect(),
 
             store,
             api: Arc::new(Api::new(&config.api)),
             logins: Arc::new(Semaphore::new(CONCURRENT_LOGINS)),
-            roles: HashMap::new(),
+            roles: Vec::new(),
+            social: Social::new(relations),
             rng: Hc128Rng::try_from_rng(&mut SysRng).expect("could not initialize hc128 rng"),
             validator: MessageValidator::new(config.message.clone()),
             moderation: Moderation::new(punishments),
@@ -195,6 +205,7 @@ impl ChatServer {
         if let Some(user) = online {
             let resolved = Resolved {
                 identity: self.identity(user).clone(),
+                accept_friend_requests: self.users[&user].accept_friend_requests,
                 last_ip: self.online_connections(user).next().map(|(_, connection)| connection.ip),
             };
             then(self, ctx, Some(resolved));
@@ -210,6 +221,7 @@ impl ChatServer {
                         actor.directory.entry(identity.id).or_insert_with(|| identity.clone());
                         Resolved {
                             identity,
+                            accept_friend_requests: model.accept_friend_requests,
                             last_ip: model.last_ip.and_then(|ip| ip.parse().ok()),
                         }
                     }),
@@ -236,6 +248,7 @@ impl ChatServer {
             online.connections.retain(|connection| *connection != id);
             if online.connections.is_empty() {
                 self.users.remove(&user);
+                self.send_presence(user);
             }
         }
     }
@@ -243,6 +256,7 @@ impl ChatServer {
 
 pub(super) struct Resolved {
     identity: Identity,
+    accept_friend_requests: bool,
     last_ip: Option<IpAddr>,
 }
 
@@ -278,7 +292,7 @@ impl ChatServer {
         ctx.spawn(async move { api.roles().await }.into_actor(self).map(|result, actor, _ctx| {
             match result {
                 Ok(roles) => {
-                    actor.roles = roles.into_iter().map(|role| (role.id.clone(), role)).collect();
+                    actor.roles = roles;
                 }
                 Err(err) => warn!("Could not refresh roles: {}", err),
             }
@@ -294,7 +308,44 @@ impl ChatServer {
     fn has_staff_role(&self, roles: &[String]) -> bool {
         roles
             .iter()
-            .any(|role| self.roles.get(role).is_some_and(|role| role.is_staff))
+            .any(|role| self.role(role).is_some_and(|role| role.is_staff))
+    }
+
+    fn role(&self, id: &str) -> Option<&RoleDefinition> {
+        self.roles.iter().find(|role| role.id == id)
+    }
+
+    fn user_ref(&self, user: UserId) -> UserRef {
+        UserRef::from(self.identity(user))
+    }
+
+    fn author(&self, user: UserId) -> Author {
+        let mut roles: Vec<RoleView> = self
+            .users
+            .get(&user)
+            .into_iter()
+            .flat_map(|online| online.roles.iter())
+            .map(|id| match self.role(id) {
+                Some(role) => RoleView {
+                    id: role.id.clone(),
+                    name: role.display_name.clone(),
+                    staff: role.is_staff,
+                },
+                None => RoleView {
+                    id: id.clone(),
+                    name: id.clone(),
+                    staff: false,
+                },
+            })
+            .collect();
+        let position = |role: &RoleView| self.roles.iter().position(|known| known.id == role.id).unwrap_or(usize::MAX);
+        roles.sort_by_key(|role| (!role.staff, position(role)));
+
+        Author {
+            user: self.user_ref(user),
+            roles,
+            highlight: false,
+        }
     }
 }
 
@@ -303,15 +354,8 @@ impl Handler<Disconnect> for ChatServer {
 
     fn handle(&mut self, msg: Disconnect, _ctx: &mut Context<Self>) {
         info!("User `{}` disconnected.", msg.id);
-        let Some(connection) = self.connections.remove(&msg.id) else { return };
-        if let Login::User(user) = connection.login {
-            if let Some(online) = self.users.get_mut(&user) {
-                online.connections.retain(|id| *id != msg.id);
-                if online.connections.is_empty() {
-                    self.users.remove(&user);
-                }
-            }
-        }
+        self.logout(msg.id);
+        self.connections.remove(&msg.id);
     }
 }
 
@@ -329,12 +373,25 @@ struct Connection {
     session_hash: Option<String>,
     login: Login,
     allow_messages: bool,
+    server_chat: bool,
+}
+
+impl Connection {
+    fn user(&self) -> Option<UserId> {
+        match self.login {
+            Login::User(user) => Some(user),
+            _ => None,
+        }
+    }
 }
 
 struct OnlineUser {
     connections: Vec<InternalId>,
     rate_limiter: RateLimiter,
+    actions: ActionLimiter,
     roles: Vec<String>,
+    hide_server: bool,
+    accept_friend_requests: bool,
 }
 
 #[derive(Message)]

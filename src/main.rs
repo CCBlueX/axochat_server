@@ -127,9 +127,10 @@ async fn start_server(config: Config) -> Result<()> {
 
     let store = open_store(&config).await?;
     let punishments = active_punishments(&store).await?;
+    let social = store.send(store::LoadSocial).await.map_err(mailbox)??;
 
     let server_config = config.clone();
-    let server = chat::ChatServer::new(server_config, store, punishments).start();
+    let server = chat::ChatServer::new(server_config, store, punishments, social).start();
 
     let server_data = web::Data::new(server);
     let real_ip = web::Data::new(ip::RealIp::new(

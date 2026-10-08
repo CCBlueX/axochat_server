@@ -32,6 +32,7 @@ impl Handler<Connect> for ChatServer {
                 session_hash: None,
                 login: Login::Anonymous,
                 allow_messages: false,
+                server_chat: false,
             },
         );
         debug!("User `{}` joined the chat from {}.", id, msg.ip);
