@@ -118,6 +118,7 @@ pub struct ChatServer {
 
     current_internal_user_id: u64,
     history: VecDeque<Recorded>,
+    recent_reports: Vec<RecentReport>,
     next_message_id: u64,
 }
 
@@ -146,6 +147,7 @@ impl ChatServer {
 
             current_internal_user_id: 0,
             history: VecDeque::with_capacity(HISTORY),
+            recent_reports: Vec::new(),
             next_message_id: 1,
         }
     }
@@ -411,6 +413,7 @@ struct OnlineUser {
     roles: Vec<String>,
     hide_server: bool,
     accept_friend_requests: bool,
+    created_at: i64,
 }
 
 #[derive(Message)]
@@ -441,4 +444,13 @@ struct Recorded {
     time: i64,
     /// `None` for public channels.
     audience: Option<Vec<UserId>>,
+}
+
+struct RecentReport {
+    at: i64,
+    target: UserId,
+    reporter: UserId,
+    message: Option<u64>,
+    /// The reporter's network, if the report counts towards an automatic mute.
+    network: Option<crate::ip::Cidr>,
 }

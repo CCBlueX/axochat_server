@@ -81,6 +81,24 @@ pub enum ClientPacket {
     Groups {
         groups: Vec<GroupView>,
     },
+    Reports {
+        reports: Vec<ReportView>,
+    },
+    ReportCreated {
+        report: ReportView,
+    },
+}
+
+#[derive(Serialize, Clone)]
+pub struct ReportView {
+    pub id: Uuid,
+    pub reporter: UserRef,
+    pub target: UserRef,
+    pub channel: Option<String>,
+    pub message: Option<u64>,
+    pub content: Option<String>,
+    pub reason: String,
+    pub time: i64,
 }
 
 #[derive(Serialize, Clone)]
@@ -225,6 +243,9 @@ pub enum ServerPacket {
     Block { user: String, blocked: bool },
     ChatMessage { channel: String, content: String },
     Group(GroupAction),
+    Report { user: String, message: Option<u64>, reason: String },
+    RequestReports,
+    ResolveReport { id: Uuid },
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -272,6 +293,8 @@ pub enum SuccessReason {
     Unban,
     Punish,
     Pardon,
+    Report,
+    Resolve,
 }
 
 #[cfg(test)]

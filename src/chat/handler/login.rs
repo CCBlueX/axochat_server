@@ -102,6 +102,7 @@ impl ChatServer {
             roles: Vec::new(),
             hide_server: verified.model.hide_server,
             accept_friend_requests: verified.model.accept_friend_requests,
+            created_at: verified.model.created_at,
         });
         online.connections.push(id);
         online.roles = verified.roles;

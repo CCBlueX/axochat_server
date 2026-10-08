@@ -1,5 +1,6 @@
 mod account;
 mod punish;
+mod report;
 mod social;
 mod count;
 mod group;
@@ -68,6 +69,15 @@ impl Handler<ServerPacketId> for ChatServer {
             }
             ServerPacket::Friend { action, user } => {
                 self.handle_friend(user_id, action, user, ctx);
+            }
+            ServerPacket::Report { user, message, reason } => {
+                self.handle_report(user_id, user, message, reason, ctx);
+            }
+            ServerPacket::RequestReports => {
+                self.handle_request_reports(user_id, ctx);
+            }
+            ServerPacket::ResolveReport { id } => {
+                self.handle_resolve_report(user_id, id);
             }
             ServerPacket::Group(action) => {
                 self.handle_group(user_id, action, ctx);

@@ -15,7 +15,7 @@ use uuid::Uuid;
 const MAX_REASON: usize = 256;
 
 impl ChatServer {
-    fn staff(&self, user_id: InternalId) -> Option<UserId> {
+    pub(super) fn staff(&self, user_id: InternalId) -> Option<UserId> {
         let user = self.logged_in(user_id)?;
         if !self.is_staff(user) {
             info!("`{}` tried to moderate without permission", user_id);
@@ -231,7 +231,7 @@ impl ChatServer {
         });
     }
 
-    fn punish(&mut self, punishment: Punishment) {
+    pub(super) fn punish(&mut self, punishment: Punishment) {
         self.persist(vec![Write::Punish(punishment.to_model())]);
 
         let covered: Vec<InternalId> = self
