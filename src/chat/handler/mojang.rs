@@ -40,6 +40,7 @@ impl ChatServer {
         }
         let session_hash = connection.session_hash.clone().unwrap_or_default();
         let Some(visit) = self.begin_login(user_id) else { return };
+        let delay = visit.delay;
 
         let allow_messages = info.allow_messages;
         let session_url = self.config.mojang.session_url.clone();
@@ -47,6 +48,7 @@ impl ChatServer {
 
         ctx.spawn(
             async move {
+                actix::clock::sleep(delay).await;
                 let _permit = logins.acquire().await;
                 let profile = verify(&session_url, user_id, &info, &session_hash).await?;
 
@@ -84,11 +86,13 @@ impl ChatServer {
             self.send_error(user_id, ClientError::MojangRequestMissing);
             return;
         };
+        let Some(delay) = self.login_turn(user_id) else { return };
         let session_url = self.config.mojang.session_url.clone();
         let logins = self.logins.clone();
 
         ctx.spawn(
             async move {
+                actix::clock::sleep(delay).await;
                 let _permit = logins.acquire().await;
                 let profile = verify(&session_url, user_id, &info, &session_hash).await?;
                 Ok(Player {

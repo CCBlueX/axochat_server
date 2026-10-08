@@ -116,7 +116,7 @@ impl ChatServer {
         let expires_at = duration.map(|seconds| created_at.saturating_add((seconds as i64).saturating_mul(1000)));
 
         match (user, ip) {
-            (Some(query), _) => self.resolve_user(ctx, query.clone(), Scope::Anyone, move |actor, _ctx, resolved| {
+            (Some(query), _) => self.resolve_user(ctx, staff, query.clone(), Scope::Anyone, move |actor, _ctx, resolved| {
                 let Some(Resolved { identity, last_ip, .. }) = resolved else {
                     actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, query));
                     return;
@@ -174,7 +174,7 @@ impl ChatServer {
             }
         };
         match (user, ip) {
-            (Some(query), _) => self.resolve_user(ctx, query.clone(), Scope::Anyone, move |actor, _ctx, resolved| {
+            (Some(query), _) => self.resolve_user(ctx, staff, query.clone(), Scope::Anyone, move |actor, _ctx, resolved| {
                 let Some(resolved) = resolved else {
                     actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, query));
                     return;
@@ -195,11 +195,9 @@ impl ChatServer {
     }
 
     pub(super) fn handle_request_punishments(&mut self, user_id: InternalId, user: String, ctx: &mut Context<Self>) {
-        if self.staff(user_id).is_none() {
-            return;
-        }
+        let Some(staff) = self.staff(user_id) else { return };
 
-        self.resolve_user(ctx, user.clone(), Scope::Anyone, move |actor, _ctx, resolved| {
+        self.resolve_user(ctx, staff, user.clone(), Scope::Anyone, move |actor, _ctx, resolved| {
             let Some(resolved) = resolved else {
                 actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, user));
                 return;

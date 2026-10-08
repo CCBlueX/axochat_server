@@ -75,7 +75,7 @@ impl ChatServer {
         let target = Uuid::parse_str(&receiver)
             .ok()
             .filter(|id| self.users.contains_key(id) && self.identity(*id).kind == IdentityKind::Account)
-            .or_else(|| self.find_online(&receiver, Scope::Accounts))
+            .or_else(|| self.find_by_name(user, &receiver, Scope::Accounts))
             .filter(|target| !self.social.has_blocked(*target, user));
         let Some(target) = target else {
             self.send_error(user_id, ClientError::PrivateMessageNotAccepted);

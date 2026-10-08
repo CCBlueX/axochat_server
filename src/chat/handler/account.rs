@@ -10,10 +10,12 @@ use actix::*;
 impl ChatServer {
     pub(super) fn login_account(&mut self, user_id: InternalId, token: String, allow_messages: bool, ctx: &mut Context<Self>) {
         let Some(visit) = self.begin_login(user_id) else { return };
+        let delay = visit.delay;
         let (api, store, logins) = (self.api.clone(), self.store.clone(), self.logins.clone());
 
         ctx.spawn(
             async move {
+                actix::clock::sleep(delay).await;
                 let _permit = logins.acquire().await;
                 let account = api.account(&token).await.map_err(|err| match err {
                     ApiError::Unauthorized => ClientError::LoginFailed,

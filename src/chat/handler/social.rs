@@ -77,7 +77,7 @@ impl ChatServer {
 
     pub(super) fn handle_friend(&mut self, user_id: InternalId, action: FriendAction, query: String, ctx: &mut Context<Self>) {
         let Some(user) = self.account_user(user_id) else { return };
-        self.resolve_user(ctx, query, Scope::Accounts, move |actor, _ctx, resolved| {
+        self.resolve_user(ctx, user, query, Scope::Accounts, move |actor, _ctx, resolved| {
             // a name nobody has answers like a real account would
             let Some(target) = resolved else {
                 match action {
@@ -94,8 +94,8 @@ impl ChatServer {
                     .request(user, target_id, target.accept_friend_requests, now)
                     .map(|(_, writes)| writes),
                 FriendAction::Accept => actor.social.accept(user, target_id, now),
-                FriendAction::Decline => actor.social.decline(user, target_id),
-                FriendAction::Remove => actor.social.remove(user, target_id),
+                FriendAction::Decline => actor.social.decline(user, target_id, now),
+                FriendAction::Remove => actor.social.remove(user, target_id, now),
             };
             match result {
                 Ok(writes) => {
@@ -110,7 +110,7 @@ impl ChatServer {
 
     pub(super) fn handle_block(&mut self, user_id: InternalId, query: String, blocked: bool, ctx: &mut Context<Self>) {
         let Some(user) = self.acting_user(user_id) else { return };
-        self.resolve_user(ctx, query, Scope::Anyone, move |actor, _ctx, resolved| {
+        self.resolve_user(ctx, user, query, Scope::Anyone, move |actor, _ctx, resolved| {
             let Some(target) = resolved else { return };
             let target_id = target.identity.id;
             // the blocked user only hears of it through a friendship or request that disappears

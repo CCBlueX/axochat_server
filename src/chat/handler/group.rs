@@ -37,7 +37,7 @@ impl ChatServer {
                 let result = self.groups.delete(user, group);
                 self.group_changed(user_id, group, before, result);
             }
-            GroupAction::Invite { group, user: query } => self.resolve_user(ctx, query, Scope::Accounts, move |actor, _ctx, resolved| {
+            GroupAction::Invite { group, user: query } => self.resolve_user(ctx, user, query, Scope::Accounts, move |actor, _ctx, resolved| {
                 // only friends can be invited, so nobody else is worth telling apart
                 let Some(target) = resolved else {
                     actor.send_error(user_id, ClientError::NotFriends);
@@ -49,7 +49,7 @@ impl ChatServer {
                 let result = actor.groups.invite(user, group, target, friends, blocked, now);
                 actor.group_changed(user_id, group, Vec::new(), result);
             }),
-            GroupAction::Kick { group, user: query } => self.resolve_user(ctx, query.clone(), Scope::Accounts, move |actor, _ctx, resolved| {
+            GroupAction::Kick { group, user: query } => self.resolve_user(ctx, user, query.clone(), Scope::Accounts, move |actor, _ctx, resolved| {
                 let Some(target) = resolved else {
                     actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, query));
                     return;
@@ -59,7 +59,7 @@ impl ChatServer {
                 actor.group_changed(user_id, group, before, result);
             }),
             GroupAction::Promote { group, user: query, admin } => {
-                self.resolve_user(ctx, query.clone(), Scope::Accounts, move |actor, _ctx, resolved| {
+                self.resolve_user(ctx, user, query.clone(), Scope::Accounts, move |actor, _ctx, resolved| {
                     let Some(target) = resolved else {
                         actor.send(user_id, ClientPacket::error_with(ClientError::UnknownUser, query));
                         return;

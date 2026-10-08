@@ -75,9 +75,10 @@ impl Actor for Session {
             .into_actor(self)
             .map(|res, actor, ctx| {
                 match res {
-                    Ok(id) => {
+                    Ok(Some(id)) => {
                         actor.id = id;
                     }
+                    Ok(None) => actor.close(ctx, Some(ws::CloseCode::Policy.into())),
                     Err(err) => {
                         warn!("Could not accept connection: {}", err);
                         ctx.stop();

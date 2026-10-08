@@ -48,6 +48,11 @@ const ROLE_REFRESH: Duration = Duration::from_secs(600);
 const MAINTENANCE: Duration = Duration::from_secs(3600);
 const HISTORY: usize = 1000;
 const PARTY_TICK: Duration = Duration::from_secs(2);
+const LOGIN_BURST: u32 = 10;
+const LOGIN_RATE: f64 = 0.5;
+const LOGIN_MAX_WAIT: Duration = Duration::from_secs(60);
+/// Connections from one address that have not logged in; v1 sessions never time out.
+const ANONYMOUS_PER_ADDRESS: usize = 16;
 
 pub async fn chat_route(
     req: HttpRequest,
@@ -121,6 +126,7 @@ pub struct ChatServer {
     member_states: HashMap<UserId, MemberState>,
     /// Servers whose hashed seeds are hidden or randomized.
     unreliable_seeds: HashSet<String>,
+    login_pace: HashMap<IpAddr, ActionLimiter>,
     rng: Hc128Rng,
     validator: MessageValidator,
     moderation: Moderation,
@@ -154,6 +160,7 @@ impl ChatServer {
             party_snapshots: HashMap::new(),
             member_states: HashMap::new(),
             unreliable_seeds: HashSet::new(),
+            login_pace: HashMap::new(),
             rng: Hc128Rng::try_from_rng(&mut SysRng).expect("could not initialize hc128 rng"),
             validator: MessageValidator::new(config.message.clone()),
             moderation: Moderation::new(punishments),
@@ -191,14 +198,29 @@ impl ChatServer {
         self.directory.get(&user).expect("online users are in the directory")
     }
 
-    /// Resolves the name of an online user: exact spelling before case-insensitive,
-    /// Minecraft accounts before LiquidBounce Accounts.
-    fn find_online(&self, name: &str, scope: Scope) -> Option<UserId> {
-        self.users
-            .keys()
-            .filter_map(|id| self.directory.get(id))
-            .filter(|identity| identity.name.eq_ignore_ascii_case(name) && scope.includes(identity.kind))
-            .min_by_key(|identity| (identity.name != name, identity.kind != Kind::Mojang))
+    /// Names are not unique, so the requester's friends and party come first, then online users, the one
+    /// seen first winning; a newcomer taking a known name gets nothing meant for the other.
+    fn find_by_name(&self, requester: UserId, name: &str, scope: Scope) -> Option<UserId> {
+        let named = |user: &UserId| {
+            self.directory
+                .get(user)
+                .filter(|identity| identity.name.eq_ignore_ascii_case(name) && scope.includes(identity.kind))
+        };
+        let contacts = self
+            .social
+            .friends(requester)
+            .map(|(friend, _)| friend)
+            .chain(self.parties.of(requester).into_iter().flat_map(|party| party.users()));
+        contacts
+            .filter_map(|user| named(&user))
+            .min_by_key(|identity| identity.name != name)
+            .or_else(|| {
+                self.users
+                    .iter()
+                    .filter_map(|(user, online)| named(user).map(|identity| (identity, online.created_at)))
+                    .min_by_key(|(identity, created_at)| (identity.name != name, *created_at))
+                    .map(|(identity, _)| identity)
+            })
             .map(|identity| identity.id)
     }
 
@@ -220,16 +242,16 @@ impl ChatServer {
         self.store.do_send(Persist(writes));
     }
 
-    /// Resolves a public id or name: online users directly, everyone else from the database.
-    fn resolve_user<F>(&mut self, ctx: &mut Context<Self>, query: String, scope: Scope, then: F)
+    fn resolve_user<F>(&mut self, ctx: &mut Context<Self>, requester: UserId, query: String, scope: Scope, then: F)
     where
         F: FnOnce(&mut ChatServer, &mut Context<ChatServer>, Option<Resolved>) + 'static,
     {
-        let online = Uuid::parse_str(&query)
+        let known = Uuid::parse_str(&query)
             .ok()
-            .filter(|id| self.users.contains_key(id) && scope.includes(self.identity(*id).kind))
-            .or_else(|| self.find_online(&query, scope));
-        if let Some(user) = online {
+            .filter(|id| self.directory.get(id).is_some_and(|identity| scope.includes(identity.kind)))
+            .or_else(|| self.find_by_name(requester, &query, scope));
+        let query = known.map_or(query, |user| user.to_string());
+        if let Some(user) = known.filter(|user| self.users.contains_key(user)) {
             let resolved = Resolved {
                 identity: self.identity(user).clone(),
                 accept_friend_requests: self.users[&user].accept_friend_requests,
@@ -336,6 +358,8 @@ impl Actor for ChatServer {
         ctx.run_interval(MAINTENANCE, |actor, _ctx| {
             let now = now_ms();
             actor.moderation.prune(now);
+            actor.login_pace.retain(|_, pace| !pace.is_idle());
+            actor.social.prune(now);
             let retention = actor.config.moderation.ip_retention.as_millis() as i64;
             actor.persist(vec![Write::ForgetIps { seen_before: now - retention }]);
         });

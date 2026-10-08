@@ -137,6 +137,11 @@ impl Client {
         }
     }
 
+    async fn closed(&mut self) -> bool {
+        let frame = actix_web::rt::time::timeout(Duration::from_secs(5), self.framed.next()).await;
+        matches!(frame, Ok(None | Some(Ok(ws::Frame::Close(_)))))
+    }
+
     async fn next(&mut self, name: &str) -> Value {
         loop {
             let packet = self.next_any().await;
@@ -265,4 +270,33 @@ async fn protocol() {
     }
     alice.send(json!({ "m": "PartyState", "c": { "position": { "x": 1.0, "y": 2.0, "z": 3.0, "yaw": 0.0, "pitch": 0.0, "dimension": null } } })).await;
     assert_eq!(bob.next("PartyMemberState").await["c"]["position"]["z"], json!(3.0));
+
+    // a LAN server is shared with members on the same network, and the leader sees it was sent
+    alice.send(json!({ "m": "Location", "c": { "server": "localhost:25570", "world": world, "player": null } })).await;
+    alice.send(json!({ "m": "Party", "c": { "action": "warp" } })).await;
+    assert_eq!(bob.next("PartyWarp").await["c"]["server"], "localhost:25570");
+    assert_eq!(alice.next("PartyWarp").await["c"]["server"], "localhost:25570");
+
+    // accepting another invite switches parties
+    let mut carol = Client::connect(&url).await;
+    carol.account(&format!("carol-{}", run), &format!("Carol{}", run), "").await;
+    carol.send(json!({ "m": "Party", "c": { "action": "invite", "user": format!("Bob{}", run) } })).await;
+    let invite = bob.next("PartyInvite").await;
+    bob.send(json!({ "m": "Party", "c": { "action": "accept", "party": invite["c"]["party"] } })).await;
+    loop {
+        let party = bob.next("Party").await;
+        if party["c"]["party"]["id"] == invite["c"]["party"] {
+            break;
+        }
+    }
+
+    // sockets that never log in are capped per address
+    let mut idle = Vec::new();
+    for _ in 0..16 {
+        let mut client = Client::connect(&url).await;
+        client.send(json!({ "m": "Hello", "c": { "protocol": 2 } })).await;
+        client.next("Hello").await;
+        idle.push(client);
+    }
+    assert!(Client::connect(&url).await.closed().await, "the 17th is refused");
 }

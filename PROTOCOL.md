@@ -303,6 +303,11 @@ sequenceDiagram
 The server pings every 30 seconds and closes a v2 connection that has not
 answered for 90 seconds.
 
+One address may keep 16 connections that are not logged in; more are closed.
+Logins from one address get a burst of 10, then one every two seconds; later
+ones wait their turn for up to a minute, beyond that the answer is
+`RateLimited`. Proving a Minecraft session counts as a login.
+
 ## Identities
 A user is either a LiquidBounce Account (`account`) or a Minecraft account
 verified through the session server (`mojang`). A Minecraft login whose UUID is
@@ -317,8 +322,11 @@ on with `RequestMojangInfo` and `LoginMojang`, answered by `Success`
 (`Minecraft`). Others then see that account as `minecraft`.
 
 Every user has a public `id`. Wherever a packet takes a `user`, it accepts an
-`id` or a name. Names resolve online users before offline ones; where only
-accounts count, only account names do. The server answers the same whether
+`id` or a name. Names are not unique: they resolve to the requester's friends
+and party first, then online users, then everyone else, the user seen first
+winning; where only accounts count, only account names do. Account names drop
+formatting codes and invisible or direction-changing characters, turn
+whitespace into `_` and are at most 32 characters long. The server answers the same whether
 an account exists or not: invites and friend requests to unknown names vanish,
 direct messages to them are not accepted and reports succeed.
 
@@ -647,6 +655,8 @@ Every field is optional.
 
 ### Friend
 `action` is `request`, `accept`, `decline` or `remove`.
+A request that was withdrawn or declined is ignored for 10 minutes when sent
+again.
 
 ```json
 { "m": "Friend", "c": { "action": "request", "user": "Notch" } }
@@ -714,7 +724,9 @@ when the world age drifts more than 40 ticks from the client's prediction.
 - `seed` is the hashed seed from the login and respawn packets, 0 if absent,
   as a number or a decimal string (for clients without 64-bit integers).
 - `age` is the world's game time in ticks, `null` while it does not advance.
-- `player` is the client's in-game profile on that server.
+- `player` is the client's in-game profile on that server. After a proven Minecraft
+  session, it must be that account or the offline-mode UUID of its name, or it
+  is dropped.
 
 ```json
 {
@@ -748,7 +760,8 @@ They count until the next `Sightings` or a new world.
 
 ### PartyState
 Live state shared with the party, at most 16 KiB per packet. Limits per second:
-10 `position`, 4 `status`, 1 `inventory`; excess is dropped.
+10 `position`, 4 `status`, 1 `inventory`; excess is dropped, and so are positions
+beyond 30,000,000 blocks.
 
 `Item` is `{ "identifier", "displayName", "count", "damage", "maxDamage", "empty", "enchantments" }`
 with `displayName` as a text component and `enchantments` mapping ids to levels.
@@ -779,8 +792,10 @@ Members who join or come back get the last state of everyone else.
 `message` is the [ChatMessage](#chatmessage) id, if any; it must be the
 target's and readable by the reporter, or the answer is `InvalidId`.
 
-Reports from five networks within an hour mute the target for an hour until
-staff review. Minecraft accounts first seen less than a day ago do not count.
+A user files at most 10 reports per hour, beyond that the answer is
+`RateLimited`; repeating a report changes nothing. Reports with a `message`
+from five networks within an hour mute the target for an hour until staff
+review. Users first seen less than a day ago do not count.
 
 ```json
 { "m": "Report", "c": { "user": "Spammer", "message": 4182, "reason": "Spam" } }

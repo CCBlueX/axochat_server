@@ -328,7 +328,6 @@ impl Handler<LoadPunishments> for Store {
     }
 }
 
-/// A user by public id or name; of several with the name, the one seen last.
 #[derive(Message)]
 #[rtype(result = "Result<Option<user::Model>, DbErr>")]
 pub struct FindUser {
@@ -351,7 +350,8 @@ impl Handler<FindUser> for Store {
             if accounts {
                 find = find.filter(user::Column::Account.is_not_null());
             }
-            find.order_by_desc(user::Column::LastSeenAt)
+            // names are not unique; whoever had it first keeps it
+            find.order_by_asc(user::Column::CreatedAt)
                 .one(&db)
                 .await
         })

@@ -7,11 +7,15 @@ use std::collections::{HashMap, HashSet};
 
 pub const MAX_FRIENDS: usize = 200;
 const MAX_PENDING: usize = 100;
+/// After a request is withdrawn or declined, the same one is ignored this long, so nobody is notified over and over.
+const REQUEST_COOLDOWN: i64 = 10 * 60_000;
 
 #[derive(Default)]
 pub struct Social {
     outgoing: HashMap<UserId, HashMap<UserId, (Kind, i64)>>,
     incoming: HashMap<UserId, HashSet<UserId>>,
+    /// Until when requests from the first to the second are ignored.
+    cooldowns: HashMap<(UserId, UserId), i64>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -73,6 +77,10 @@ impl Social {
         self.of_kind(user, Kind::Block).map(|(target, _)| target)
     }
 
+    pub fn prune(&mut self, now: i64) {
+        self.cooldowns.retain(|_, until| *until > now);
+    }
+
     fn set(&mut self, user: UserId, target: UserId, kind: Kind, at: i64) {
         self.outgoing.entry(user).or_default().insert(target, (kind, at));
         self.incoming.entry(target).or_default().insert(user);
@@ -120,8 +128,9 @@ impl Social {
             return Ok((Requested::Friends, writes));
         }
         // a request towards someone who blocked the sender is kept, but never shown to them;
-        // one towards someone who takes none vanishes, like one towards a name nobody has
-        if !accepts && !self.has_blocked(target, user) {
+        // one towards someone who takes none, or too soon again, vanishes like one towards a name nobody has
+        let cooling = self.cooldowns.get(&(user, target)).is_some_and(|until| at < *until);
+        if (!accepts || cooling) && !self.has_blocked(target, user) {
             return Ok((Requested::Pending, Vec::new()));
         }
         self.write_set(&mut writes, user, target, Kind::Request, at);
@@ -145,24 +154,28 @@ impl Social {
         self.write_set(writes, target, user, Kind::Friend, at);
     }
 
-    pub fn decline(&mut self, user: UserId, from: UserId) -> Result<Vec<Write>, ClientError> {
+    pub fn decline(&mut self, user: UserId, from: UserId, at: i64) -> Result<Vec<Write>, ClientError> {
         if self.get(from, user) != Some(Kind::Request) {
             return Err(ClientError::NoInvite);
         }
+        self.cooldowns.insert((from, user), at + REQUEST_COOLDOWN);
         let mut writes = Vec::new();
         self.write_unset(&mut writes, from, user);
         Ok(writes)
     }
 
     /// Ends a friendship, or withdraws a request.
-    pub fn remove(&mut self, user: UserId, target: UserId) -> Result<Vec<Write>, ClientError> {
+    pub fn remove(&mut self, user: UserId, target: UserId, at: i64) -> Result<Vec<Write>, ClientError> {
         let mut writes = Vec::new();
         match self.get(user, target) {
             Some(Kind::Friend) => {
                 self.write_unset(&mut writes, user, target);
                 self.write_unset(&mut writes, target, user);
             }
-            Some(Kind::Request) => self.write_unset(&mut writes, user, target),
+            Some(Kind::Request) => {
+                self.cooldowns.insert((user, target), at + REQUEST_COOLDOWN);
+                self.write_unset(&mut writes, user, target);
+            }
             _ => return Err(ClientError::NotFriends),
         }
         Ok(writes)
@@ -209,9 +222,9 @@ mod tests {
         assert!(social.are_friends(A, B) && social.are_friends(B, A));
         assert_eq!(social.incoming_requests(B).count(), 0);
         assert_eq!(social.request(B, A, true, 3).unwrap_err(), ClientError::AlreadyFriends);
-        assert_eq!(social.remove(B, A).unwrap().len(), 2);
+        assert_eq!(social.remove(B, A, 4).unwrap().len(), 2);
         assert!(!social.are_friends(A, B));
-        assert_eq!(social.remove(B, A).unwrap_err(), ClientError::NotFriends);
+        assert_eq!(social.remove(B, A, 4).unwrap_err(), ClientError::NotFriends);
     }
 
     #[test]
@@ -228,9 +241,11 @@ mod tests {
         assert!(social.request(A, B, false, 1).unwrap().1.is_empty());
         assert_eq!(social.incoming_requests(B).count(), 0);
         social.request(A, C, true, 1).unwrap();
-        assert_eq!(social.decline(C, A).unwrap().len(), 1);
-        assert_eq!(social.decline(C, A).unwrap_err(), ClientError::NoInvite);
+        assert_eq!(social.decline(C, A, 2).unwrap().len(), 1);
+        assert_eq!(social.decline(C, A, 2).unwrap_err(), ClientError::NoInvite);
         assert_eq!(social.accept(C, A, 2).unwrap_err(), ClientError::NoInvite);
+        assert!(social.request(A, C, true, 3).unwrap().1.is_empty(), "declined, so ignored for a while");
+        assert_eq!(social.request(A, C, true, 2 + REQUEST_COOLDOWN).unwrap().1.len(), 1);
     }
 
     #[test]

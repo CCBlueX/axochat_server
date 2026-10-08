@@ -1,5 +1,5 @@
 use crate::chat::{
-    new_id, now_ms, ChatServer, ClientPacket, Identity, InternalId, Kind, RecentReport, ReportView, Scope, SuccessReason,
+    new_id, now_ms, ChatServer, ClientPacket, Identity, InternalId, RecentReport, ReportView, Scope, SuccessReason,
     UserId,
 };
 use crate::entity::{punishment, report};
@@ -18,8 +18,10 @@ use uuid::Uuid;
 const REPORTS_TO_MUTE: usize = 5;
 const REPORT_WINDOW: i64 = 60 * 60 * 1000;
 const AUTO_MUTE: i64 = 60 * 60 * 1000;
-/// Minecraft accounts younger than this here do not count, against throwaway alts.
-const MINECRAFT_REPORTER_AGE: i64 = 24 * 60 * 60 * 1000;
+/// Reporters first seen less than this ago do not count towards a mute, against throwaway accounts.
+const REPORTER_AGE: i64 = 24 * 60 * 60 * 1000;
+/// Reports one user can file per window.
+const REPORTS_PER_REPORTER: usize = 10;
 const MAX_REASON: usize = 256;
 const LISTED_REPORTS: u64 = 50;
 
@@ -32,8 +34,14 @@ impl ChatServer {
     pub(super) fn handle_report(&mut self, user_id: InternalId, query: String, message: Option<u64>, reason: String, ctx: &mut Context<Self>) {
         let Some(reporter) = self.acting_user(user_id) else { return };
         let reason: String = reason.chars().take(MAX_REASON).collect();
+        let now = now_ms();
+        self.recent_reports.retain(|report| now - report.at < REPORT_WINDOW);
+        if self.recent_reports.iter().filter(|report| report.reporter == reporter).count() >= REPORTS_PER_REPORTER {
+            self.send_error(user_id, ClientError::RateLimited);
+            return;
+        }
 
-        self.resolve_user(ctx, query, Scope::Anyone, move |actor, _ctx, resolved| {
+        self.resolve_user(ctx, reporter, query, Scope::Anyone, move |actor, _ctx, resolved| {
             let Some(target) = resolved else {
                 actor.send(user_id, ClientPacket::Success { reason: SuccessReason::Report });
                 return;
@@ -62,7 +70,16 @@ impl ChatServer {
                 None => None,
             };
 
-            let now = now_ms();
+            // a repeated report is no news for staff
+            if actor
+                .recent_reports
+                .iter()
+                .any(|report| report.reporter == reporter && report.target == target && report.message == message)
+            {
+                actor.send(user_id, ClientPacket::Success { reason: SuccessReason::Report });
+                return;
+            }
+
             let model = report::Model {
                 id: new_id(&mut actor.rng),
                 reporter_id: reporter,
@@ -96,21 +113,13 @@ impl ChatServer {
         });
     }
 
+    /// Only reports pointing at a message, from users known for a while, count towards a mute.
     fn count_report(&mut self, reporter: UserId, target: UserId, message: Option<u64>, ip: Option<IpAddr>, now: i64) {
-        self.recent_reports.retain(|report| now - report.at < REPORT_WINDOW);
-        if self
-            .recent_reports
-            .iter()
-            .any(|report| report.reporter == reporter && report.target == target && report.message == message)
-        {
-            return;
-        }
-
-        let counts = self.directory.get(&reporter).is_some_and(|identity| identity.kind == Kind::Account)
-            || self
+        let counts = message.is_some()
+            && self
                 .users
                 .get(&reporter)
-                .is_some_and(|online| now - online.created_at >= MINECRAFT_REPORTER_AGE);
+                .is_some_and(|online| now - online.created_at >= REPORTER_AGE);
         self.recent_reports.push(RecentReport {
             at: now,
             target,

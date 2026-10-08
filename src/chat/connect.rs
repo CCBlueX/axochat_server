@@ -1,11 +1,11 @@
 use log::*;
 
-use super::{session::Frame, ChatServer, Connection, InternalId, Login, Protocol, StateLimits};
+use super::{session::Frame, ChatServer, Connection, InternalId, Login, Protocol, StateLimits, ANONYMOUS_PER_ADDRESS};
 use actix::*;
 use std::net::IpAddr;
 
 #[derive(Message)]
-#[rtype(InternalId)]
+#[rtype(result = "Option<InternalId>")]
 pub(super) struct Connect {
     addr: Recipient<Frame>,
     ip: IpAddr,
@@ -18,9 +18,19 @@ impl Connect {
 }
 
 impl Handler<Connect> for ChatServer {
-    type Result = InternalId;
+    type Result = Option<InternalId>;
 
-    fn handle(&mut self, msg: Connect, _ctx: &mut Context<Self>) -> InternalId {
+    fn handle(&mut self, msg: Connect, _ctx: &mut Context<Self>) -> Option<InternalId> {
+        let anonymous = self
+            .connections
+            .values()
+            .filter(|connection| connection.ip == msg.ip && connection.login == Login::Anonymous)
+            .count();
+        if anonymous >= ANONYMOUS_PER_ADDRESS {
+            info!("Refused a connection from {}: too many without a login.", msg.ip);
+            return None;
+        }
+
         self.current_internal_user_id += 1;
         let id = InternalId::new(self.current_internal_user_id);
         self.connections.insert(
@@ -39,6 +49,6 @@ impl Handler<Connect> for ChatServer {
             },
         );
         debug!("User `{}` joined the chat from {}.", id, msg.ip);
-        id
+        Some(id)
     }
 }

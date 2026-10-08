@@ -22,7 +22,7 @@ impl ChatServer {
         let Some(user) = self.account_user(user_id) else { return };
         let now = now_ms();
         match action {
-            PartyAction::Invite { user: query } => self.resolve_user(ctx, query, Scope::Accounts, move |actor, _ctx, resolved| {
+            PartyAction::Invite { user: query } => self.resolve_user(ctx, user, query, Scope::Accounts, move |actor, _ctx, resolved| {
                 // an invite to a name nobody has, to someone offline or to someone who blocked the inviter vanishes
                 let target = resolved
                     .map(|resolved| resolved.identity.id)

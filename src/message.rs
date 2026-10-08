@@ -1,7 +1,10 @@
 use crate::error::*;
 
 use crate::config::MsgConfig;
-use std::{collections::VecDeque, time::Instant};
+use std::{
+    collections::VecDeque,
+    time::{Duration, Instant},
+};
 
 pub struct RateLimiter {
     buf: VecDeque<(Instant, String)>,
@@ -125,10 +128,14 @@ impl ActionLimiter {
         }
     }
 
-    pub fn allow(&mut self) -> bool {
+    fn refill(&mut self) {
         let now = Instant::now();
         self.tokens = (self.tokens + now.duration_since(self.last).as_secs_f64() * self.per_second).min(self.burst);
         self.last = now;
+    }
+
+    pub fn allow(&mut self) -> bool {
+        self.refill();
         if self.tokens >= 1.0 {
             self.tokens -= 1.0;
             true
@@ -136,17 +143,44 @@ impl ActionLimiter {
             false
         }
     }
+
+    /// Like `allow`, but the action may wait its turn: how long, or `None` if longer than `max_wait`.
+    pub fn reserve(&mut self, max_wait: Duration) -> Option<Duration> {
+        self.refill();
+        let wait = ((1.0 - self.tokens) / self.per_second).max(0.0);
+        if wait > max_wait.as_secs_f64() {
+            return None;
+        }
+        self.tokens -= 1.0;
+        Some(Duration::from_secs_f64(wait))
+    }
+
+    /// Whether nothing was used lately, so the limiter can be dropped.
+    pub fn is_idle(&mut self) -> bool {
+        self.refill();
+        self.tokens >= self.burst
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::ActionLimiter;
+    use std::time::Duration;
 
     #[test]
     fn action_limiter() {
         let mut limiter = ActionLimiter::new(3, 0.0);
         assert!(limiter.allow() && limiter.allow() && limiter.allow());
         assert!(!limiter.allow());
+    }
+
+    #[test]
+    fn waiting_turns() {
+        let mut limiter = ActionLimiter::new(1, 1.0);
+        assert_eq!(limiter.reserve(Duration::ZERO), Some(Duration::ZERO));
+        let wait = limiter.reserve(Duration::from_secs(5)).unwrap();
+        assert!(wait > Duration::from_millis(900) && wait <= Duration::from_secs(1));
+        assert!(limiter.reserve(Duration::from_secs(1)).is_none(), "the next turn is two seconds away");
     }
 }
 
