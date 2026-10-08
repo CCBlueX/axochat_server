@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use snafu::Snafu;
 use std::{error, fmt, io};
 
@@ -72,8 +72,8 @@ impl From<ClientError> for Error {
     }
 }
 
-/// A client-facing error.
-#[derive(Debug, Clone, Serialize)]
+/// A client-facing error, sent as its name.
+#[derive(Debug, Clone, PartialEq)]
 pub enum ClientError {
     NotSupported,
     LoginFailed,
@@ -90,34 +90,58 @@ pub enum ClientError {
     InvalidCharacter(char),
     InvalidId,
     Internal,
+    InvalidPacket,
+}
+
+impl ClientError {
+    pub fn code(&self) -> &'static str {
+        use self::ClientError::*;
+
+        match self {
+            NotSupported => "NotSupported",
+            LoginFailed => "LoginFailed",
+            NotLoggedIn => "NotLoggedIn",
+            AlreadyLoggedIn => "AlreadyLoggedIn",
+            MojangRequestMissing => "MojangRequestMissing",
+            NotPermitted => "NotPermitted",
+            NotBanned => "NotBanned",
+            Banned => "Banned",
+            RateLimited => "RateLimited",
+            PrivateMessageNotAccepted => "PrivateMessageNotAccepted",
+            EmptyMessage => "EmptyMessage",
+            MessageTooLong => "MessageTooLong",
+            InvalidCharacter(_) => "InvalidCharacter",
+            InvalidId => "InvalidId",
+            Internal => "Internal",
+            InvalidPacket => "InvalidPacket",
+        }
+    }
+
+    pub fn detail(&self) -> Option<String> {
+        match self {
+            ClientError::InvalidCharacter(ch) => Some(ch.to_string()),
+            _ => None,
+        }
+    }
+}
+
+impl Serialize for ClientError {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.code())
+    }
 }
 
 impl error::Error for ClientError {}
 
 impl fmt::Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::ClientError::*;
-
         match self {
-            NotSupported => write!(f, "method not supported"),
-            LoginFailed => write!(f, "login failed"),
-            NotLoggedIn => write!(f, "not logged in"),
-            AlreadyLoggedIn => write!(f, "already logged in"),
-            MojangRequestMissing => write!(f, "mojang request missing"),
-            NotPermitted => write!(f, "not permitted"),
-            NotBanned => write!(f, "not banned"),
-            Banned => write!(f, "banned"),
-            RateLimited => write!(f, "rate limited"),
-            PrivateMessageNotAccepted => write!(f, "private message not accepted"),
-            EmptyMessage => write!(f, "empty message"),
-            MessageTooLong => write!(f, "message was too long"),
-            InvalidCharacter(ch) => write!(
+            ClientError::InvalidCharacter(ch) => write!(
                 f,
                 "message contained invalid character: `{}`",
                 ch.escape_default()
             ),
-            InvalidId => write!(f, "invalid id"),
-            Internal => write!(f, "internal error"),
+            error => f.write_str(error.code()),
         }
     }
 }

@@ -12,33 +12,17 @@ impl ChatServer {
                     "`{}` tried to get the user count without permission",
                     user_id
                 );
-                send_message(
-                    &session.addr,
-                    ClientPacket::Error {
-                        message: ClientError::NotPermitted,
-                    },
-                    "permission denied for user count"
-                );
+                send_message(session, ClientPacket::error(ClientError::NotPermitted), "permission denied for user count");
                 return;
             }
 
-            send_message(
-                &session.addr,
-                ClientPacket::UserCount {
-                    connections: self.connections.len() as u32,
-                    logged_in: self.users.len() as u32,
-                },
-                "user count"
-            );
+            send_message(session, ClientPacket::UserCount {
+                connections: self.connections.len() as u32,
+                logged_in: self.users.len() as u32,
+            }, "user count");
         } else {
             info!("`{}` is not logged in.", user_id);
-            send_message(
-                &session.addr,
-                ClientPacket::Error {
-                    message: ClientError::NotLoggedIn,
-                },
-                "not logged in for user count"
-            );
+            send_message(session, ClientPacket::error(ClientError::NotLoggedIn), "not logged in for user count");
         }
     }
 }

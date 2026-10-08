@@ -19,41 +19,19 @@ impl ChatServer {
                     Ok(token) => token,
                     Err(err) => {
                         warn!("Could not create new token for user `{}`: {}", user_id, err);
-                        send_message(
-                            &session.addr,
-                            ClientPacket::Error {
-                                message: ClientError::Internal,
-                            },
-                            "jwt creation failed"
-                        );
+                        send_message(session, ClientPacket::error(ClientError::Internal), "jwt creation failed");
                         return;
                     }
                 };
 
-                send_message(
-                    &session.addr, 
-                    ClientPacket::NewJWT { token },
-                    "new jwt"
-                );
+                send_message(session, ClientPacket::NewJWT { token }, "new jwt");
             } else {
                 info!("User `{}` tried to get JWT but is not logged in.", user_id);
-                send_message(
-                    &session.addr,
-                    ClientPacket::Error {
-                        message: ClientError::NotLoggedIn,
-                    },
-                    "jwt not logged in"
-                );
+                send_message(session, ClientPacket::error(ClientError::NotLoggedIn), "jwt not logged in");
             }
         } else {
             info!("User `{}` tried to request not supported JWT", user_id);
-            send_message(
-                &session.addr,
-                ClientPacket::Error {
-                    message: ClientError::NotSupported,
-                },
-                "jwt not supported"
-            );
+            send_message(session, ClientPacket::error(ClientError::NotSupported), "jwt not supported");
         }
     }
 
@@ -65,13 +43,7 @@ impl ChatServer {
     ) {
         let Some(session) = self.connections.get_mut(&user_id) else { return };
         if session.is_logged_in() || session.login_pending {
-            send_message(
-                &session.addr,
-                ClientPacket::Error {
-                    message: ClientError::AlreadyLoggedIn,
-                },
-                "jwt already logged in"
-            );
+            send_message(session, ClientPacket::error(ClientError::AlreadyLoggedIn), "jwt already logged in");
             return;
         }
         if let Some(auth) = &self.authenticator {
@@ -92,9 +64,9 @@ impl ChatServer {
                         allow_messages,
                     });
                     
-                    let addr = &session.addr;
+
                     send_message(
-                        addr,
+                        session,
                         ClientPacket::Success {
                             reason: SuccessReason::Login,
                         },
@@ -103,24 +75,12 @@ impl ChatServer {
                 }
                 Err(err) => {
                     info!("Login of user `{}` using JWT failed: {}", user_id, err);
-                    send_message(
-                        &session.addr,
-                        ClientPacket::Error {
-                            message: ClientError::LoginFailed,
-                        },
-                        "jwt login failed"
-                    );
+                    send_message(session, ClientPacket::error(ClientError::LoginFailed), "jwt login failed");
                 }
             };
         } else {
             info!("User `{}` tried to request not supported JWT", user_id);
-            send_message(
-                &session.addr,
-                ClientPacket::Error {
-                    message: ClientError::NotSupported,
-                },
-                "jwt login not supported"
-            );
+            send_message(session, ClientPacket::error(ClientError::NotSupported), "jwt login not supported");
         }
     }
 }

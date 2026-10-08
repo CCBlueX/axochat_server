@@ -1,5 +1,6 @@
 mod ban;
 mod count;
+mod hello;
 mod jwt;
 mod message;
 mod mojang;
@@ -44,6 +45,9 @@ impl Handler<ServerPacketId> for ChatServer {
             }
             ServerPacket::RequestUserCount => {
                 self.send_user_count(user_id);
+            }
+            ServerPacket::Hello { protocol } => {
+                self.handle_hello(user_id, protocol);
             }
         }
     }

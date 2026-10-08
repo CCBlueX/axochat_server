@@ -24,11 +24,7 @@ impl ChatServer {
             content,
         };
         for session in self.connections.values() {
-            send_message(
-                &session.addr,
-                client_packet.clone(),
-                "broadcast message"
-            );
+            send_message(session, client_packet.clone(), "broadcast message");
         }
     }
 
@@ -65,11 +61,7 @@ impl ChatServer {
                             "User `{}` has written to `{}` privately.",
                             user_id, receiver
                         );
-                        if send_message(
-                            &receiver_session.addr,
-                            client_packet,
-                            "private message"
-                        ) {
+                        if send_message(receiver_session, client_packet, "private message") {
                             return;
                         }
                     }
@@ -85,13 +77,7 @@ impl ChatServer {
         }
 
         if let Some(session) = self.connections.get(&user_id) {
-            send_message(
-                &session.addr,
-                ClientPacket::Error {
-                    message: ClientError::PrivateMessageNotAccepted,
-                },
-                "private message not accepted"
-            );
+            send_message(session, ClientPacket::error(ClientError::PrivateMessageNotAccepted), "private message not accepted");
         }
     }
 
@@ -102,24 +88,14 @@ impl ChatServer {
             if let Err(err) = self.validator.validate(content) {
                 info!("User `{}` tried to send invalid message: {}", user_id, err);
                 if let Error::AxoChat { source } = err {
-                    send_message(
-                        &session.addr,
-                        ClientPacket::Error { message: source },
-                        "message validation failed"
-                    );
+                    send_message(session, ClientPacket::error(source), "message validation failed");
                 }
 
                 return None;
             }
             if self.moderation.is_banned(&info.uuid) {
                 info!("User `{}` tried to send message while banned", user_id);
-                send_message(
-                    &session.addr,
-                    ClientPacket::Error {
-                        message: ClientError::Banned,
-                    },
-                    "banned user attempted sending"
-                );
+                send_message(session, ClientPacket::error(ClientError::Banned), "banned user attempted sending");
 
                 return None;
             }
@@ -127,13 +103,7 @@ impl ChatServer {
             Some(session)
         } else {
             info!("`{}` is not logged in.", user_id);
-            send_message(
-                &session.addr,
-                ClientPacket::Error {
-                    message: ClientError::NotLoggedIn,
-                },
-                "not logged in for messaging"
-            );
+            send_message(session, ClientPacket::error(ClientError::NotLoggedIn), "not logged in for messaging");
             None
         }
     }
@@ -151,13 +121,7 @@ impl ChatServer {
                 "User `{}` tried to send message, but was rate limited.",
                 user_id
             );
-            send_message(
-                &session.addr,
-                ClientPacket::Error {
-                    message: ClientError::RateLimited,
-                },
-                "rate limited"
-            );
+            send_message(session, ClientPacket::error(ClientError::RateLimited), "rate limited");
             true
         } else {
             false

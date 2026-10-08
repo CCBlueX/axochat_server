@@ -1,6 +1,6 @@
 use log::*;
 
-use super::{session::Frame, ChatServer, InternalId, SessionState};
+use super::{session::Frame, ChatServer, InternalId, Protocol, SessionState};
 use actix::*;
 use std::net::IpAddr;
 
@@ -28,6 +28,7 @@ impl Handler<Connect> for ChatServer {
             SessionState {
                 addr: msg.addr,
                 ip: msg.ip,
+                protocol: Protocol::V1,
                 session_hash: None,
                 login_pending: false,
                 user: None,

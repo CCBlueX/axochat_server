@@ -23,11 +23,7 @@ impl ChatServer {
         let session_hash = crate::auth::encode_sha1_bytes(&bytes);
         session.session_hash = Some(session_hash.clone());
 
-        send_message(
-            &session.addr,
-            ClientPacket::MojangInfo { session_hash },
-            "mojang info"
-        );
+        send_message(session, ClientPacket::MojangInfo { session_hash }, "mojang info");
     }
 
     pub(super) fn login_mojang(
@@ -40,13 +36,7 @@ impl ChatServer {
 
         if session.is_logged_in() || session.login_pending {
             info!("User `{}` tried to log in multiple times.", user_id);
-            send_message(
-                &session.addr,
-                ClientPacket::Error {
-                    message: ClientError::AlreadyLoggedIn,
-                },
-                "mojang already logged in"
-            );
+            send_message(session, ClientPacket::error(ClientError::AlreadyLoggedIn), "mojang already logged in");
             return;
         }
 
@@ -55,13 +45,7 @@ impl ChatServer {
                 "User `{}` did not request mojang info, but tried to log in.",
                 user_id
             );
-            send_message(
-                &session.addr,
-                ClientPacket::Error {
-                    message: ClientError::MojangRequestMissing,
-                },
-                "mojang info missing"
-            );
+            send_message(session, ClientPacket::error(ClientError::MojangRequestMissing), "mojang info missing");
             return;
         };
 
@@ -79,25 +63,13 @@ impl ChatServer {
                         Ok(mojang_info) => mojang_info,
                         Err(err) => {
                             warn!("Could not authenticate user `{}`: {}", user_id, err);
-                            send_message(
-                                &session.addr,
-                                ClientPacket::Error {
-                                    message: ClientError::LoginFailed,
-                                },
-                                "mojang login failed"
-                            );
+                            send_message(session, ClientPacket::error(ClientError::LoginFailed), "mojang login failed");
                             return;
                         }
                     };
 
                     if Uuid::from_str(&mojang_info.id).ok() != Some(info.uuid) {
-                        send_message(
-                            &session.addr,
-                            ClientPacket::Error {
-                                message: ClientError::InvalidId,
-                            },
-                            "mojang invalid id"
-                        );
+                        send_message(session, ClientPacket::error(ClientError::InvalidId), "mojang invalid id");
                         return;
                     }
 
@@ -121,13 +93,9 @@ impl ChatServer {
                         ..info
                     });
 
-                    send_message(
-                        &session.addr,
-                        ClientPacket::Success {
-                            reason: SuccessReason::Login,
-                        },
-                        "mojang login success"
-                    );
+                    send_message(session, ClientPacket::Success {
+                        reason: SuccessReason::Login,
+                    }, "mojang login success");
                 }),
         );
     }

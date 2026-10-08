@@ -19,13 +19,7 @@ impl ChatServer {
         if let Some(info) = &session.user {
             if !self.moderation.is_moderator(&info.uuid) {
                 info!("`{}` tried to (un-)ban user without permission", user_id);
-                send_message(
-                    &session.addr,
-                    ClientPacket::Error {
-                        message: ClientError::NotPermitted,
-                    },
-                    "permission denied"
-                );
+                send_message(session, ClientPacket::error(ClientError::NotPermitted), "permission denied");
                 return;
             }
 
@@ -43,40 +37,20 @@ impl ChatServer {
                         info!("User `{}` unbanned.", receiver);
                         SuccessReason::Unban
                     };
-                    send_message(
-                        &session.addr, 
-                        ClientPacket::Success { reason },
-                        "ban/unban success"
-                    );
+                    send_message(session, ClientPacket::Success { reason }, "ban/unban success");
                 }
                 Err(Error::AxoChat { source }) => {
                     info!("Could not (un-)ban user `{}`: {}", receiver, source);
-                    send_message(
-                        &session.addr,
-                        ClientPacket::Error { message: source },
-                        "ban/unban client error"
-                    );
+                    send_message(session, ClientPacket::error(source), "ban/unban client error");
                 }
                 Err(err) => {
                     info!("Could not (un-)ban user `{}`: {}", receiver, err);
-                    send_message(
-                        &session.addr,
-                        ClientPacket::Error {
-                            message: ClientError::Internal,
-                        },
-                        "ban/unban internal error"
-                    );
+                    send_message(session, ClientPacket::error(ClientError::Internal), "ban/unban internal error");
                 }
             }
         } else {
             info!("`{}` is not logged in.", user_id);
-            send_message(
-                &session.addr,
-                ClientPacket::Error {
-                    message: ClientError::NotLoggedIn,
-                },
-                "not logged in"
-            );
+            send_message(session, ClientPacket::error(ClientError::NotLoggedIn), "not logged in");
             return;
         }
     }

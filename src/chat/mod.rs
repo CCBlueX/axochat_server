@@ -1,20 +1,21 @@
 mod connect;
 mod handler;
 mod id;
+mod packet;
 mod session;
 
 pub use id::*;
 pub use session::Frame;
 
+use packet::*;
+
 use crate::config::Config;
-use crate::error::*;
 use log::*;
 
 use actix::*;
 use actix_web::{web, HttpRequest, HttpResponse};
-use serde::{Deserialize, Serialize};
 
-use crate::auth::{Authenticator, UserInfo};
+use crate::auth::Authenticator;
 use crate::ip::RealIp;
 use crate::message::{MessageValidator, RateLimiter};
 use crate::moderation::Moderation;
@@ -22,7 +23,6 @@ use rand::{rngs::SysRng, SeedableRng};
 use rand_hc::Hc128Rng;
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
-use uuid::Uuid;
 
 const MAX_FRAME_SIZE: usize = 64 * 1024;
 
@@ -72,14 +72,10 @@ impl ChatServer {
     }
 }
 
-fn encode(packet: &ClientPacket) -> Frame {
-    Frame(serde_json::to_string(packet).expect("could not encode packet").into())
-}
-
 // try_send would also fail on a full mailbox; only a closed one is a delivery failure.
-fn send_message(recipient: &Recipient<Frame>, message: ClientPacket, context: &str) -> bool {
-    if recipient.connected() {
-        recipient.do_send(encode(&message));
+fn send_message(session: &SessionState, message: ClientPacket, context: &str) -> bool {
+    if session.addr.connected() {
+        session.addr.do_send(message.encode(session.protocol));
         true
     } else {
         warn!("Could not send {} to user: mailbox closed", context);
@@ -109,9 +105,10 @@ impl Handler<Disconnect> for ChatServer {
     }
 }
 
-pub(self) struct SessionState {
+struct SessionState {
     addr: Recipient<Frame>,
     ip: IpAddr,
+    protocol: Protocol,
     session_hash: Option<String>,
     login_pending: bool,
     user: Option<User>,
@@ -134,52 +131,6 @@ struct Disconnect {
     id: InternalId,
 }
 
-/// A clientbound packet
-#[derive(Serialize, Clone)]
-#[serde(tag = "m", content = "c")]
-enum ClientPacket {
-    MojangInfo {
-        session_hash: String,
-    },
-    NewJWT {
-        token: String,
-    },
-    Message {
-        author_info: UserInfo,
-        content: String,
-    },
-    PrivateMessage {
-        author_info: UserInfo,
-        content: String,
-    },
-    UserCount {
-        connections: u32,
-        logged_in: u32,
-    },
-    Success {
-        reason: SuccessReason,
-    },
-    Error {
-        message: ClientError,
-    },
-}
-
-/// A serverbound packet
-#[derive(Message, Deserialize)]
-#[rtype(result = "()")]
-#[serde(tag = "m", content = "c")]
-enum ServerPacket {
-    RequestMojangInfo,
-    LoginMojang(User),
-    LoginJWT { token: String, allow_messages: bool },
-    RequestJWT,
-    Message { content: String },
-    PrivateMessage { receiver: String, content: String },
-    BanUser { user: Uuid },
-    UnbanUser { user: Uuid },
-    RequestUserCount,
-}
-
 #[derive(Message)]
 #[rtype(result = "()")]
 struct ServerPacketId {
@@ -187,113 +138,9 @@ struct ServerPacketId {
     packet: ServerPacket,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-struct User {
-    pub name: String,
-    pub uuid: Uuid,
-    /// Should this user allow private messages?
-    pub allow_messages: bool,
-}
-
-#[derive(Serialize, Deserialize, Copy, Clone)]
-enum SuccessReason {
-    Login,
-    Ban,
-    Unban,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{ClientError, ClientPacket, ServerPacket, SuccessReason, User, UserInfo};
-    use serde_json::json;
-
-    fn notch() -> UserInfo {
-        UserInfo {
-            name: "Notch".into(),
-            uuid: "069a79f4-44e9-4726-a5be-fca90e38aaf5".parse().unwrap(),
-        }
-    }
-
-    fn encode(packet: ClientPacket) -> serde_json::Value {
-        serde_json::from_str(&serde_json::to_string(&packet).unwrap()).unwrap()
-    }
-
-    #[test]
-    fn client_packets() {
-        let author = json!({ "name": "Notch", "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5" });
-        let cases = [
-            (
-                ClientPacket::MojangInfo { session_hash: "88e16a1019277b15d58faf0541e11910eb756f6".into() },
-                json!({ "m": "MojangInfo", "c": { "session_hash": "88e16a1019277b15d58faf0541e11910eb756f6" } }),
-            ),
-            (
-                ClientPacket::NewJWT { token: "token".into() },
-                json!({ "m": "NewJWT", "c": { "token": "token" } }),
-            ),
-            (
-                ClientPacket::Message { author_info: notch(), content: "Hello, World!".into() },
-                json!({ "m": "Message", "c": { "author_info": author, "content": "Hello, World!" } }),
-            ),
-            (
-                ClientPacket::PrivateMessage { author_info: notch(), content: "Hello, User!".into() },
-                json!({ "m": "PrivateMessage", "c": { "author_info": author, "content": "Hello, User!" } }),
-            ),
-            (
-                ClientPacket::UserCount { connections: 623, logged_in: 531 },
-                json!({ "m": "UserCount", "c": { "connections": 623, "logged_in": 531 } }),
-            ),
-            (
-                ClientPacket::Success { reason: SuccessReason::Login },
-                json!({ "m": "Success", "c": { "reason": "Login" } }),
-            ),
-            (
-                ClientPacket::Success { reason: SuccessReason::Ban },
-                json!({ "m": "Success", "c": { "reason": "Ban" } }),
-            ),
-            (
-                ClientPacket::Success { reason: SuccessReason::Unban },
-                json!({ "m": "Success", "c": { "reason": "Unban" } }),
-            ),
-            (
-                ClientPacket::Error { message: ClientError::LoginFailed },
-                json!({ "m": "Error", "c": { "message": "LoginFailed" } }),
-            ),
-        ];
-        for (packet, expected) in cases {
-            assert_eq!(encode(packet), expected);
-        }
-    }
-
-    #[test]
-    fn server_packets() {
-        let decode = |value: serde_json::Value| -> ServerPacket { serde_json::from_value(value).unwrap() };
-
-        assert!(matches!(decode(json!({ "m": "RequestMojangInfo" })), ServerPacket::RequestMojangInfo));
-        assert!(matches!(decode(json!({ "m": "RequestJWT" })), ServerPacket::RequestJWT));
-        assert!(matches!(decode(json!({ "m": "RequestUserCount" })), ServerPacket::RequestUserCount));
-        assert!(matches!(
-            decode(json!({ "m": "LoginMojang", "c": { "name": "Notch", "uuid": "069a79f444e94726a5befca90e38aaf5", "allow_messages": true } })),
-            ServerPacket::LoginMojang(User { ref name, allow_messages: true, .. }) if name == "Notch"
-        ));
-        assert!(matches!(
-            decode(json!({ "m": "LoginJWT", "c": { "token": "token", "allow_messages": false } })),
-            ServerPacket::LoginJWT { ref token, allow_messages: false } if token == "token"
-        ));
-        assert!(matches!(
-            decode(json!({ "m": "Message", "c": { "content": "Hello, World!" } })),
-            ServerPacket::Message { ref content } if content == "Hello, World!"
-        ));
-        assert!(matches!(
-            decode(json!({ "m": "PrivateMessage", "c": { "content": "Hello, Notch!", "receiver": "Notch" } })),
-            ServerPacket::PrivateMessage { ref receiver, .. } if receiver == "Notch"
-        ));
-        assert!(matches!(
-            decode(json!({ "m": "BanUser", "c": { "user": "069a79f4-44e9-4726-a5be-fca90e38aaf5" } })),
-            ServerPacket::BanUser { .. }
-        ));
-        assert!(matches!(
-            decode(json!({ "m": "UnbanUser", "c": { "user": "069a79f4-44e9-4726-a5be-fca90e38aaf5" } })),
-            ServerPacket::UnbanUser { .. }
-        ));
-    }
+#[derive(Message)]
+#[rtype(result = "()")]
+struct Malformed {
+    user_id: InternalId,
+    error: String,
 }
