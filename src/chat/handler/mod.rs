@@ -1,4 +1,5 @@
 mod account;
+mod party;
 mod punish;
 mod report;
 mod social;
@@ -78,6 +79,22 @@ impl Handler<ServerPacketId> for ChatServer {
             }
             ServerPacket::ResolveReport { id } => {
                 self.handle_resolve_report(user_id, id);
+            }
+            ServerPacket::Party(action) => {
+                self.handle_party(user_id, action, ctx);
+            }
+            ServerPacket::Location { server, world, player } => {
+                self.handle_location(user_id, server, world, player);
+            }
+            ServerPacket::Sightings { entities, tab } => {
+                self.handle_sightings(user_id, entities, tab);
+            }
+            ServerPacket::PartyState {
+                position,
+                status,
+                inventory,
+            } => {
+                self.handle_party_state(user_id, position, status, inventory);
             }
             ServerPacket::Group(action) => {
                 self.handle_group(user_id, action, ctx);

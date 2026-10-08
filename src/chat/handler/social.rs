@@ -160,8 +160,11 @@ impl ChatServer {
         }
     }
 
-    pub(super) fn visible_server(&self, _user: UserId) -> Option<String> {
-        None
+    pub(super) fn visible_server(&self, user: UserId) -> Option<String> {
+        if self.users.get(&user)?.hide_server {
+            return None;
+        }
+        self.game_location(user)?.address.clone()
     }
 
     pub(in crate::chat) fn send_presence(&self, user: UserId) {

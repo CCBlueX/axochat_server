@@ -1,6 +1,6 @@
 use log::*;
 
-use super::{session::Frame, ChatServer, Connection, InternalId, Login, Protocol};
+use super::{session::Frame, ChatServer, Connection, InternalId, Login, Protocol, StateLimits};
 use actix::*;
 use std::net::IpAddr;
 
@@ -33,6 +33,8 @@ impl Handler<Connect> for ChatServer {
                 login: Login::Anonymous,
                 allow_messages: false,
                 server_chat: false,
+                location: None,
+                limits: StateLimits::default(),
             },
         );
         debug!("User `{}` joined the chat from {}.", id, msg.ip);

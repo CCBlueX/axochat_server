@@ -1,11 +1,13 @@
 mod channel;
 mod connect;
 mod group;
+mod party;
 mod handler;
 mod id;
 mod packet;
 mod session;
 mod social;
+mod world;
 
 pub use id::*;
 pub use session::Frame;
@@ -13,6 +15,8 @@ pub use session::Frame;
 use packet::*;
 use channel::Channel;
 use group::{GroupId, Groups};
+use party::Parties;
+use world::Location;
 use social::Social;
 
 use crate::api::{Api, RoleDefinition};
@@ -30,7 +34,7 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use rand::{rngs::SysRng, SeedableRng};
 use rand_hc::Hc128Rng;
 use serde::Serialize;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -43,6 +47,7 @@ const CONCURRENT_LOGINS: usize = 64;
 const ROLE_REFRESH: Duration = Duration::from_secs(600);
 const MAINTENANCE: Duration = Duration::from_secs(3600);
 const HISTORY: usize = 1000;
+const PARTY_TICK: Duration = Duration::from_secs(2);
 
 pub async fn chat_route(
     req: HttpRequest,
@@ -111,6 +116,11 @@ pub struct ChatServer {
     roles: Vec<RoleDefinition>,
     social: Social,
     groups: Groups,
+    parties: Parties,
+    party_snapshots: HashMap<UserId, String>,
+    member_states: HashMap<UserId, MemberState>,
+    /// Servers whose hashed seeds are hidden or randomized.
+    unreliable_seeds: HashSet<String>,
     rng: Hc128Rng,
     validator: MessageValidator,
     moderation: Moderation,
@@ -140,6 +150,10 @@ impl ChatServer {
             roles: Vec::new(),
             social: Social::new(state.relations),
             groups: Groups::new(state.groups, state.members),
+            parties: Parties::default(),
+            party_snapshots: HashMap::new(),
+            member_states: HashMap::new(),
+            unreliable_seeds: HashSet::new(),
             rng: Hc128Rng::try_from_rng(&mut SysRng).expect("could not initialize hc128 rng"),
             validator: MessageValidator::new(config.message.clone()),
             moderation: Moderation::new(punishments),
@@ -257,13 +271,27 @@ impl ChatServer {
         let Some(connection) = self.connections.get_mut(&id) else { return };
         let Login::User(user) = connection.login else { return };
         connection.login = Login::Anonymous;
-        if let Some(online) = self.users.get_mut(&user) {
-            online.connections.retain(|connection| *connection != id);
-            if online.connections.is_empty() {
-                self.users.remove(&user);
-                self.send_presence(user);
-            }
+        connection.location = None;
+        let Some(online) = self.users.get_mut(&user) else { return };
+        online.connections.retain(|connection| *connection != id);
+        if online.game == Some(id) {
+            online.game = online
+                .connections
+                .iter()
+                .copied()
+                .find(|other| self.connections.get(other).is_some_and(|other| other.location.is_some()));
         }
+        if online.connections.is_empty() {
+            self.users.remove(&user);
+            self.parties.set_online(user, false, now_ms());
+            self.send_presence(user);
+        }
+        self.refresh_party(user);
+    }
+
+    fn game_location(&self, user: UserId) -> Option<&Location> {
+        let game = self.users.get(&user)?.game?;
+        self.connections.get(&game)?.location.as_ref()
     }
 }
 
@@ -290,6 +318,7 @@ impl Actor for ChatServer {
     fn started(&mut self, ctx: &mut Context<Self>) {
         self.refresh_roles(ctx);
         ctx.run_interval(ROLE_REFRESH, |actor, ctx| actor.refresh_roles(ctx));
+        ctx.run_interval(PARTY_TICK, |actor, _ctx| actor.party_tick());
         ctx.run_interval(MAINTENANCE, |actor, _ctx| {
             let now = now_ms();
             actor.moderation.prune(now);
@@ -395,6 +424,35 @@ struct Connection {
     login: Login,
     allow_messages: bool,
     server_chat: bool,
+    location: Option<Location>,
+    limits: StateLimits,
+}
+
+struct StateLimits {
+    location: ActionLimiter,
+    sightings: ActionLimiter,
+    position: ActionLimiter,
+    status: ActionLimiter,
+    inventory: ActionLimiter,
+}
+
+impl Default for StateLimits {
+    fn default() -> StateLimits {
+        StateLimits {
+            location: ActionLimiter::new(5, 2.0),
+            sightings: ActionLimiter::new(5, 2.0),
+            position: ActionLimiter::new(10, 10.0),
+            status: ActionLimiter::new(4, 4.0),
+            inventory: ActionLimiter::new(2, 1.0),
+        }
+    }
+}
+
+#[derive(Default)]
+struct MemberState {
+    position: Option<Position>,
+    status: Option<serde_json::Value>,
+    inventory: Option<serde_json::Value>,
 }
 
 impl Connection {
@@ -414,6 +472,7 @@ struct OnlineUser {
     hide_server: bool,
     accept_friend_requests: bool,
     created_at: i64,
+    game: Option<InternalId>,
 }
 
 #[derive(Message)]

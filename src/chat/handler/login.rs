@@ -103,6 +103,7 @@ impl ChatServer {
             hide_server: verified.model.hide_server,
             accept_friend_requests: verified.model.accept_friend_requests,
             created_at: verified.model.created_at,
+            game: None,
         });
         online.connections.push(id);
         online.roles = verified.roles;
@@ -119,11 +120,13 @@ impl ChatServer {
         self.send_friends(user);
         self.send_blocks(user);
         self.send_groups(user);
+        self.party_welcome(user);
         self.send(id, ClientPacket::Success { reason: SuccessReason::Login });
 
         if came_online {
             self.send_presence(user);
         }
+        self.party_login(user);
     }
 }
 

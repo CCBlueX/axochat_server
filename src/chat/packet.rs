@@ -1,3 +1,5 @@
+use super::party::PartyRole;
+use super::world::{Player, Relation};
 use super::{Frame, Identity, Kind};
 use crate::entity::chat_group_member::Role;
 use crate::entity::punishment;
@@ -87,6 +89,66 @@ pub enum ClientPacket {
     ReportCreated {
         report: ReportView,
     },
+    Party {
+        party: Option<PartyView>,
+    },
+    PartyInvite {
+        party: Uuid,
+        from: UserRef,
+        expires: i64,
+    },
+    PartyWarp {
+        from: UserRef,
+        server: String,
+    },
+    PartyMemberState {
+        member: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        position: Option<Position>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status: Option<serde_json::Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        inventory: Option<serde_json::Value>,
+    },
+}
+
+#[derive(Serialize, Clone)]
+pub struct PartyView {
+    pub id: Uuid,
+    pub leader: Uuid,
+    pub locked: bool,
+    pub pvp: bool,
+    pub members: Vec<PartyMemberView>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct PartyMemberView {
+    pub user: UserRef,
+    pub role: PartyRole,
+    pub online: bool,
+    pub muted: bool,
+    pub relation: Relation,
+    pub player: Option<Player>,
+    pub server: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Position {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub yaw: f32,
+    pub pitch: f32,
+    pub dimension: Option<String>,
+}
+
+impl Position {
+    pub fn is_valid(&self) -> bool {
+        [self.x, self.y, self.z].iter().all(|v| v.is_finite())
+            && self.yaw.is_finite()
+            && self.pitch.is_finite()
+            && self.dimension.as_ref().is_none_or(|dimension| dimension.len() <= 64)
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -246,6 +308,62 @@ pub enum ServerPacket {
     Report { user: String, message: Option<u64>, reason: String },
     RequestReports,
     ResolveReport { id: Uuid },
+    Party(PartyAction),
+    Location {
+        server: Option<String>,
+        world: Option<World>,
+        player: Option<Player>,
+    },
+    Sightings {
+        #[serde(default)]
+        entities: Vec<Uuid>,
+        #[serde(default)]
+        tab: Vec<Uuid>,
+    },
+    PartyState {
+        position: Option<Position>,
+        status: Option<serde_json::Value>,
+        inventory: Option<serde_json::Value>,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "action", rename_all = "lowercase")]
+pub enum PartyAction {
+    Invite { user: String },
+    Accept { party: Uuid },
+    Decline { party: Uuid },
+    Leave,
+    Kick { user: String },
+    Promote { user: String, admin: bool },
+    Transfer { user: String },
+    Lock { locked: bool },
+    Mute { user: String, muted: bool },
+    Pvp { enabled: bool },
+    Warp,
+    Disband,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct World {
+    pub dimension: String,
+    #[serde(deserialize_with = "seed")]
+    pub seed: i64,
+    pub age: Option<i64>,
+}
+
+/// JavaScript cannot hold the 64-bit hashed seed as a number, so it may come as a string.
+fn seed<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<i64, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Seed {
+        Number(i64),
+        Text(String),
+    }
+    match Seed::deserialize(deserializer)? {
+        Seed::Number(seed) => Ok(seed),
+        Seed::Text(seed) => seed.parse().map_err(serde::de::Error::custom),
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

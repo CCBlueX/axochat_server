@@ -95,6 +95,11 @@ pub enum ClientError {
     UnknownGroup,
     GroupFull,
     InvalidName,
+    NotInParty,
+    AlreadyInParty,
+    PartyFull,
+    PartyLocked,
+    TooLarge,
 }
 
 impl ClientError {
@@ -128,6 +133,11 @@ impl ClientError {
             UnknownGroup => "UnknownGroup",
             GroupFull => "GroupFull",
             InvalidName => "InvalidName",
+            NotInParty => "NotInParty",
+            AlreadyInParty => "AlreadyInParty",
+            PartyFull => "PartyFull",
+            PartyLocked => "PartyLocked",
+            TooLarge => "TooLarge",
         }
     }
 
