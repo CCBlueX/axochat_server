@@ -104,7 +104,7 @@ impl ChatServer {
                         })
                     })
                     .collect();
-                members.sort_by(|a, b| a.user.name.to_lowercase().cmp(&b.user.name.to_lowercase()));
+                members.sort_by_key(|member| member.user.name.to_lowercase());
                 Some(GroupView {
                     id,
                     name: group.name.clone(),

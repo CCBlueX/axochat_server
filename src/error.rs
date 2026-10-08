@@ -9,15 +9,12 @@ pub enum Error {
     #[snafu(display("I/O: {}", source))]
     IO { source: io::Error },
     #[snafu(display("JSON: {}", source))]
-    JSON { source: serde_json::error::Error },
+    Json { source: serde_json::error::Error },
     #[snafu(display("actix-web: {}", source))]
     Actix { source: actix_web::Error },
     #[cfg(feature = "openssl-tls")]
     #[snafu(display("OpenSSL: {}", source))]
     OpenSSL { source: openssl::error::ErrorStack },
-    #[cfg(feature = "rustls-tls")]
-    #[snafu(display("rustls: {}", source))]
-    RustTLS { source: std::io::Error },
     #[cfg(feature = "rustls-tls")]
     #[snafu(display("rustls"))]
     RustTLSNoMsg,
@@ -37,7 +34,7 @@ impl From<io::Error> for Error {
 
 impl From<serde_json::error::Error> for Error {
     fn from(source: serde_json::error::Error) -> Self {
-        Error::JSON { source }
+        Error::Json { source }
     }
 }
 

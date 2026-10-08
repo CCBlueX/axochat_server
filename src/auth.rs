@@ -2,7 +2,7 @@ use crate::error::*;
 use log::*;
 
 use reqwest::{self, StatusCode};
-use serde::{de::IgnoredAny, Deserialize};
+use serde::Deserialize;
 use url::Url;
 
 use std::{sync::OnceLock, time::Duration};
@@ -27,7 +27,7 @@ pub async fn authenticate(session_url: &str, username: &str, server_id: &str) ->
         .await
         .map_err(|err| {
             debug!("Reqwest error: {:?}", err);
-            Error::IO { source: std::io::Error::new(std::io::ErrorKind::Other, err) }
+            Error::IO { source: std::io::Error::other(err) }
         })?;
 
     if response.status() == StatusCode::OK {
@@ -36,7 +36,7 @@ pub async fn authenticate(session_url: &str, username: &str, server_id: &str) ->
             .await
             .map_err(|err| {
                 debug!("JSON deserialization error: {:?}", err);
-                Error::IO { source: std::io::Error::new(std::io::ErrorKind::Other, err) }
+                Error::IO { source: std::io::Error::other(err) }
             })
     } else {
         debug!("Login status-code is {}", response.status());
@@ -48,7 +48,6 @@ pub async fn authenticate(session_url: &str, username: &str, server_id: &str) ->
 pub struct AuthInfo {
     pub id: String,
     pub name: String,
-    properties: IgnoredAny,
 }
 
 pub fn encode_sha1_bytes(bytes: &[u8; 20]) -> String {

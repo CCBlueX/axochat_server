@@ -6,8 +6,22 @@ jobs:
 
   linux:
 
-    runs-on: 
+    runs-on:
       - ubuntu-latest
+
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: axochat
+          MARIADB_DATABASE: axochat
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v7
@@ -31,8 +45,13 @@ jobs:
       - name: Build
         run: cargo build --release
 
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
       - name: Run tests
         run: cargo test
+        env:
+          DATABASE_URL: mysql://root:axochat@127.0.0.1:3306/axochat
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
