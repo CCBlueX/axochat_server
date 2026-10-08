@@ -10,6 +10,8 @@ use uuid::Uuid;
 /// World ages started this close together, in milliseconds, belong to the same world.
 const EPOCH_TOLERANCE: i64 = 5_000;
 const DEFAULT_PORT: u16 = 25565;
+/// LiquidProxy routes: `<secret>.<location>.liquidproxy.net`, formerly `<secret>.socks.liquidbounce.net`.
+const ROUTE_DOMAINS: [&str; 2] = [".liquidproxy.net", ".liquidbounce.net"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -76,7 +78,8 @@ pub fn server_key(address: &str, client: IpAddr) -> Option<ServerAddress> {
         },
     };
     let host = host.trim_end_matches('.').to_owned();
-    if host.is_empty() {
+    // a LiquidProxy route's hostname works as its owner's subscription; it is never kept or shared
+    if host.is_empty() || ROUTE_DOMAINS.iter().any(|domain| host.ends_with(domain)) {
         return None;
     }
     let port = port.unwrap_or(DEFAULT_PORT);
@@ -184,6 +187,8 @@ mod tests {
         assert_eq!(key("[2001:db8::1]:25570"), ("[2001:db8::1]:25570".into(), "[2001:db8::1]:25570".into(), false));
         assert_eq!(key("192.168.1.20"), ("192.168.1.20".into(), "192.168.1.20:25565@203.0.113.7".into(), true));
         assert!(key("localhost:25570").2);
+        assert!(server_key("Ab3xYz.EU-FRA.LiquidProxy.net.", client()).is_none(), "routes are never kept");
+        assert!(server_key("Ab3xYz.socks.liquidbounce.net:25565", client()).is_none());
         assert!(server_key("", client()).is_none());
         assert!(server_key("host:notaport", client()).is_none());
     }

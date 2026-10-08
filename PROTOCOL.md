@@ -720,7 +720,9 @@ Where the client plays. Sent when joining a world, changing dimension, and
 when the world age drifts more than 40 ticks from the client's prediction.
 `null` fields mean unknown; `"server": null` means singleplayer or no world.
 
-- `server` is the address as typed.
+- `server` is the address as typed. LiquidProxy routes (`*.liquidproxy.net`,
+  `*.liquidbounce.net`) work as their owner's subscription: clients must not
+  send them, and the server drops them.
 - `seed` is the hashed seed from the login and respawn packets, 0 if absent,
   as a number or a decimal string (for clients without 64-bit integers).
 - `age` is the world's game time in ticks, `null` while it does not advance.
