@@ -4,10 +4,7 @@ use log::*;
 
 impl ChatServer {
     pub(super) fn send_user_count(&mut self, user_id: InternalId) {
-        let session = self
-            .connections
-            .get(&user_id)
-            .expect("could not find connection");
+        let Some(session) = self.connections.get(&user_id) else { return };
 
         if let Some(info) = &session.user {
             if !self.moderation.is_moderator(&info.uuid) {

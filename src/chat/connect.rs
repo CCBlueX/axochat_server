@@ -26,6 +26,7 @@ impl Handler<Connect> for ChatServer {
             SessionState {
                 addr: msg.addr.clone(),
                 session_hash: None,
+                login_pending: false,
                 user: None,
             },
         );

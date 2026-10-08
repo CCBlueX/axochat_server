@@ -9,10 +9,7 @@ use std::collections::HashSet;
 
 impl ChatServer {
     pub(super) fn handle_request_jwt(&mut self, user_id: InternalId) {
-        let session = self
-            .connections
-            .get(&user_id)
-            .expect("could not find connection");
+        let Some(session) = self.connections.get(&user_id) else { return };
         if let Some(auth) = &self.authenticator {
             if let Some(user) = &session.user {
                 let token = match auth.new_token(UserInfo {
@@ -66,10 +63,17 @@ impl ChatServer {
         jwt: &str,
         allow_messages: bool,
     ) {
-        let session = self
-            .connections
-            .get_mut(&user_id)
-            .expect("could not find connection");
+        let Some(session) = self.connections.get_mut(&user_id) else { return };
+        if session.is_logged_in() || session.login_pending {
+            send_message(
+                &session.addr,
+                ClientPacket::Error {
+                    message: ClientError::AlreadyLoggedIn,
+                },
+                "jwt already logged in"
+            );
+            return;
+        }
         if let Some(auth) = &self.authenticator {
             match auth.auth(jwt) {
                 Ok(info) => {

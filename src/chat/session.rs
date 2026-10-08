@@ -67,13 +67,14 @@ impl Actor for Session {
                 addr.send(Connect::new(recipient)).await
             }
             .into_actor(self)
-            .map(|res, actor, _ctx| {
+            .map(|res, actor, ctx| {
                 match res {
                     Ok(id) => {
                         actor.id = id;
                     }
                     Err(err) => {
                         warn!("Could not accept connection: {}", err);
+                        ctx.stop();
                     }
                 }
             })

@@ -11,29 +11,24 @@ impl ChatServer {
             return;
         }
 
-        if self.basic_check(user_id, &content).is_some() {
-            let session = self
-                .connections
-                .get_mut(&user_id)
-                .expect("could not find connection");
+        let Some(info) = self.basic_check(user_id, &content).and_then(|session| session.user.as_ref()) else {
+            return;
+        };
 
-            let info = session.user.as_ref().unwrap();
-
-            info!("User `{}` has written `{}`.", user_id, content);
-            let client_packet = ClientPacket::Message {
-                author_info: UserInfo {
-                    name: info.name.clone(),
-                    uuid: info.uuid,
-                },
-                content,
-            };
-            for session in self.connections.values() {
-                send_message(
-                    &session.addr, 
-                    client_packet.clone(),
-                    "broadcast message"
-                );
-            }
+        info!("User `{}` has written `{}`.", user_id, content);
+        let client_packet = ClientPacket::Message {
+            author_info: UserInfo {
+                name: info.name.clone(),
+                uuid: info.uuid,
+            },
+            content,
+        };
+        for session in self.connections.values() {
+            send_message(
+                &session.addr,
+                client_packet.clone(),
+                "broadcast message"
+            );
         }
     }
 
@@ -47,20 +42,11 @@ impl ChatServer {
             return;
         }
 
-        if let Some(sender_session) = self.basic_check(user_id, &content) {
-            let sender_info = sender_session.user.as_ref().unwrap();
+        let Some(sender_info) = self.basic_check(user_id, &content).and_then(|session| session.user.as_ref()) else {
+            return;
+        };
 
-            let receiver_user = match self.users.get(&receiver) {
-                Some(user) => user,
-                None => {
-                    debug!(
-                        "User `{}` tried to write to non-existing user `{}`.",
-                        user_id, receiver
-                    );
-                    return;
-                }
-            };
-
+        if let Some(receiver_user) = self.users.get(&receiver) {
             for receiver_session in receiver_user
                 .connections
                 .iter()
@@ -90,27 +76,27 @@ impl ChatServer {
                     _ => {}
                 }
             }
+        } else {
+            debug!(
+                "User `{}` tried to write to non-existing user `{}`.",
+                user_id, receiver
+            );
+            return;
         }
 
-        let session = self
-            .connections
-            .get_mut(&user_id)
-            .expect("could not find connection");
-
-        send_message(
-            &session.addr,
-            ClientPacket::Error {
-                message: ClientError::PrivateMessageNotAccepted,
-            },
-            "private message not accepted"
-        );
+        if let Some(session) = self.connections.get(&user_id) {
+            send_message(
+                &session.addr,
+                ClientPacket::Error {
+                    message: ClientError::PrivateMessageNotAccepted,
+                },
+                "private message not accepted"
+            );
+        }
     }
 
     fn basic_check(&self, user_id: InternalId, content: &str) -> Option<&SessionState> {
-        let session = self
-            .connections
-            .get(&user_id)
-            .expect("could not find connection");
+        let session = self.connections.get(&user_id)?;
 
         if let Some(info) = &session.user {
             if let Err(err) = self.validator.validate(content) {
@@ -153,29 +139,26 @@ impl ChatServer {
     }
 
     fn check_ratelimit(&mut self, user_id: InternalId, message: String) -> bool {
-        let session = self
-            .connections
-            .get(&user_id)
-            .expect("could not find connection");
+        let Some(session) = self.connections.get(&user_id) else {
+            return true;
+        };
+        let Some(user) = session.user.as_ref().and_then(|user| self.users.get_mut(&user.name)) else {
+            return false;
+        };
 
-        if let Some(user) = &session.user {
-            let user = self.users.get_mut(&user.name).unwrap();
-            if user.rate_limiter.check_new_message(message) {
-                info!(
-                    "User `{}` tried to send message, but was rate limited.",
-                    user_id
-                );
-                send_message(
-                    &session.addr,
-                    ClientPacket::Error {
-                        message: ClientError::RateLimited,
-                    },
-                    "rate limited"
-                );
-                true
-            } else {
-                false
-            }
+        if user.rate_limiter.check_new_message(message) {
+            info!(
+                "User `{}` tried to send message, but was rate limited.",
+                user_id
+            );
+            send_message(
+                &session.addr,
+                ClientPacket::Error {
+                    message: ClientError::RateLimited,
+                },
+                "rate limited"
+            );
+            true
         } else {
             false
         }

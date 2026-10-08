@@ -87,13 +87,11 @@ impl Handler<Disconnect> for ChatServer {
         info!("User `{}` disconnected.", msg.id);
         if let Some(session) = self.connections.remove(&msg.id) {
             if let Some(info) = session.user {
-                let user_session = self
-                    .users
-                    .get_mut(&info.name)
-                    .expect("the ids should still exist here");
-                user_session.connections.remove(&msg.id);
-                if user_session.connections.is_empty() {
-                    self.users.remove(&info.name);
+                if let Some(user_session) = self.users.get_mut(&info.name) {
+                    user_session.connections.remove(&msg.id);
+                    if user_session.connections.is_empty() {
+                        self.users.remove(&info.name);
+                    }
                 }
             }
         }
@@ -103,6 +101,7 @@ impl Handler<Disconnect> for ChatServer {
 pub(self) struct SessionState {
     addr: Recipient<ClientPacket>,
     session_hash: Option<String>,
+    login_pending: bool,
     user: Option<User>,
 }
 

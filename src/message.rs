@@ -20,18 +20,13 @@ impl RateLimiter {
     /// If not, then it registers the new message instant.
     pub fn check_new_message(&mut self, message: String) -> bool {
         let now = Instant::now();
-        let limit = now - self.cfg.count_duration;
-
-        #[allow(clippy::op_ref)]
-        let last_index = self
+        while self
             .buf
-            .iter()
-            .take_while(|(time, _)| *time < limit)
-            .enumerate()
-            .map(|(i, _)| i)
-            .last()
-            .unwrap_or(0);
-        self.buf.drain(..last_index);
+            .front()
+            .is_some_and(|(time, _)| now.duration_since(*time) >= self.cfg.count_duration)
+        {
+            self.buf.pop_front();
+        }
 
         if self.buf.len() < self.cfg.max_messages {
             let message_found = self.buf.iter().any(|(_, msg)| &message == msg);

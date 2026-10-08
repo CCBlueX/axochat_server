@@ -13,10 +13,7 @@ use uuid::Uuid;
 
 impl ChatServer {
     pub(super) fn handle_request_mojang_info(&mut self, user_id: InternalId) {
-        let session = self
-            .connections
-            .get_mut(&user_id)
-            .expect("could not find connection");
+        let Some(session) = self.connections.get_mut(&user_id) else { return };
 
         let mut bytes = [0; 20];
         self.rng.fill_bytes(&mut bytes);
@@ -39,12 +36,9 @@ impl ChatServer {
         info: User,
         ctx: &mut Context<Self>,
     ) {
-        let session = self
-            .connections
-            .get(&user_id)
-            .expect("could not find connection");
+        let Some(session) = self.connections.get_mut(&user_id) else { return };
 
-        if session.is_logged_in() {
+        if session.is_logged_in() || session.login_pending {
             info!("User `{}` tried to log in multiple times.", user_id);
             send_message(
                 &session.addr,
@@ -56,78 +50,7 @@ impl ChatServer {
             return;
         }
 
-        if let Some(session_hash) = &session.session_hash {
-            let session_hash = session_hash.clone();
-            let name = info.name.clone();
-            let uuid = info.uuid;
-            let userid_for_closure = user_id;
-            let session_addr = session.addr.clone();
-
-            ctx.spawn(
-                async move {
-                    authenticate(&name, &session_hash).await
-                }
-                .into_actor(self)
-                .then(move |res, actor, _ctx| {
-                    match res {
-                        Ok(mojang_info)
-                            if Uuid::from_str(&mojang_info.id)
-                                .expect("got invalid uuid from mojang :()")
-                                == uuid =>
-                        {
-                            info!(
-                                "User `{}` has uuid `{}` and username `{}`",
-                                userid_for_closure, mojang_info.id, mojang_info.name
-                            );
-
-                            if let Some(session) = actor.connections.get_mut(&userid_for_closure) {
-                                actor
-                                    .users
-                                    .entry(info.name.clone())
-                                    .or_insert(UserSession {
-                                        rate_limiter: RateLimiter::new(
-                                            actor.config.message.clone(),
-                                        ),
-                                        connections: HashSet::new(),
-                                    })
-                                    .connections
-                                    .insert(userid_for_closure);
-
-                                session.user = Some(info);
-
-                                send_message(
-                                    &session.addr,
-                                    ClientPacket::Success {
-                                        reason: SuccessReason::Login,
-                                    },
-                                    "mojang login success"
-                                );
-                            }
-                        }
-                        Ok(_) => {
-                            send_message(
-                                &session_addr,
-                                ClientPacket::Error {
-                                    message: ClientError::InvalidId,
-                                },
-                                "mojang invalid id"
-                            );
-                        }
-                        Err(err) => {
-                            warn!("Could not authenticate user `{}`: {}", userid_for_closure, err);
-                            send_message(
-                                &session_addr,
-                                ClientPacket::Error {
-                                    message: ClientError::LoginFailed,
-                                },
-                                "mojang login failed"
-                            );
-                        }
-                    }
-                    fut::ready(())
-                }),
-            );
-        } else {
+        let Some(session_hash) = session.session_hash.clone() else {
             info!(
                 "User `{}` did not request mojang info, but tried to log in.",
                 user_id
@@ -139,6 +62,73 @@ impl ChatServer {
                 },
                 "mojang info missing"
             );
-        }
+            return;
+        };
+
+        session.login_pending = true;
+        let name = info.name.clone();
+
+        ctx.spawn(
+            async move { authenticate(&name, &session_hash).await }
+                .into_actor(self)
+                .map(move |res, actor, _ctx| {
+                    let Some(session) = actor.connections.get_mut(&user_id) else { return };
+                    session.login_pending = false;
+
+                    let mojang_info = match res {
+                        Ok(mojang_info) => mojang_info,
+                        Err(err) => {
+                            warn!("Could not authenticate user `{}`: {}", user_id, err);
+                            send_message(
+                                &session.addr,
+                                ClientPacket::Error {
+                                    message: ClientError::LoginFailed,
+                                },
+                                "mojang login failed"
+                            );
+                            return;
+                        }
+                    };
+
+                    if Uuid::from_str(&mojang_info.id).ok() != Some(info.uuid) {
+                        send_message(
+                            &session.addr,
+                            ClientPacket::Error {
+                                message: ClientError::InvalidId,
+                            },
+                            "mojang invalid id"
+                        );
+                        return;
+                    }
+
+                    info!(
+                        "User `{}` has uuid `{}` and username `{}`",
+                        user_id, mojang_info.id, mojang_info.name
+                    );
+
+                    actor
+                        .users
+                        .entry(mojang_info.name.clone())
+                        .or_insert_with(|| UserSession {
+                            rate_limiter: RateLimiter::new(actor.config.message.clone()),
+                            connections: HashSet::new(),
+                        })
+                        .connections
+                        .insert(user_id);
+
+                    session.user = Some(User {
+                        name: mojang_info.name,
+                        ..info
+                    });
+
+                    send_message(
+                        &session.addr,
+                        ClientPacket::Success {
+                            reason: SuccessReason::Login,
+                        },
+                        "mojang login success"
+                    );
+                }),
+        );
     }
 }
