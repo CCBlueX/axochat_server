@@ -139,3 +139,18 @@ pub struct UserInfo {
     pub name: String,
     pub uuid: Uuid,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::encode_sha1_bytes;
+
+    #[test]
+    fn session_hash_drops_leading_zeros() {
+        let mut bytes = [0u8; 20];
+        assert_eq!(encode_sha1_bytes(&bytes), "0");
+        bytes[19] = 0x0f;
+        assert_eq!(encode_sha1_bytes(&bytes), "f");
+        bytes[0] = 0x01;
+        assert_eq!(encode_sha1_bytes(&bytes), "10000000000000000000000000000000000000f");
+    }
+}

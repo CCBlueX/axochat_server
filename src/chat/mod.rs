@@ -191,3 +191,99 @@ enum SuccessReason {
     Ban,
     Unban,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ClientError, ClientPacket, ServerPacket, SuccessReason, User, UserInfo};
+    use serde_json::json;
+
+    fn notch() -> UserInfo {
+        UserInfo {
+            name: "Notch".into(),
+            uuid: "069a79f4-44e9-4726-a5be-fca90e38aaf5".parse().unwrap(),
+        }
+    }
+
+    fn encode(packet: ClientPacket) -> serde_json::Value {
+        serde_json::from_str(&serde_json::to_string(&packet).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn client_packets() {
+        let author = json!({ "name": "Notch", "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5" });
+        let cases = [
+            (
+                ClientPacket::MojangInfo { session_hash: "88e16a1019277b15d58faf0541e11910eb756f6".into() },
+                json!({ "m": "MojangInfo", "c": { "session_hash": "88e16a1019277b15d58faf0541e11910eb756f6" } }),
+            ),
+            (
+                ClientPacket::NewJWT { token: "token".into() },
+                json!({ "m": "NewJWT", "c": { "token": "token" } }),
+            ),
+            (
+                ClientPacket::Message { author_info: notch(), content: "Hello, World!".into() },
+                json!({ "m": "Message", "c": { "author_info": author, "content": "Hello, World!" } }),
+            ),
+            (
+                ClientPacket::PrivateMessage { author_info: notch(), content: "Hello, User!".into() },
+                json!({ "m": "PrivateMessage", "c": { "author_info": author, "content": "Hello, User!" } }),
+            ),
+            (
+                ClientPacket::UserCount { connections: 623, logged_in: 531 },
+                json!({ "m": "UserCount", "c": { "connections": 623, "logged_in": 531 } }),
+            ),
+            (
+                ClientPacket::Success { reason: SuccessReason::Login },
+                json!({ "m": "Success", "c": { "reason": "Login" } }),
+            ),
+            (
+                ClientPacket::Success { reason: SuccessReason::Ban },
+                json!({ "m": "Success", "c": { "reason": "Ban" } }),
+            ),
+            (
+                ClientPacket::Success { reason: SuccessReason::Unban },
+                json!({ "m": "Success", "c": { "reason": "Unban" } }),
+            ),
+            (
+                ClientPacket::Error { message: ClientError::LoginFailed },
+                json!({ "m": "Error", "c": { "message": "LoginFailed" } }),
+            ),
+        ];
+        for (packet, expected) in cases {
+            assert_eq!(encode(packet), expected);
+        }
+    }
+
+    #[test]
+    fn server_packets() {
+        let decode = |value: serde_json::Value| -> ServerPacket { serde_json::from_value(value).unwrap() };
+
+        assert!(matches!(decode(json!({ "m": "RequestMojangInfo" })), ServerPacket::RequestMojangInfo));
+        assert!(matches!(decode(json!({ "m": "RequestJWT" })), ServerPacket::RequestJWT));
+        assert!(matches!(decode(json!({ "m": "RequestUserCount" })), ServerPacket::RequestUserCount));
+        assert!(matches!(
+            decode(json!({ "m": "LoginMojang", "c": { "name": "Notch", "uuid": "069a79f444e94726a5befca90e38aaf5", "allow_messages": true } })),
+            ServerPacket::LoginMojang(User { ref name, allow_messages: true, .. }) if name == "Notch"
+        ));
+        assert!(matches!(
+            decode(json!({ "m": "LoginJWT", "c": { "token": "token", "allow_messages": false } })),
+            ServerPacket::LoginJWT { ref token, allow_messages: false } if token == "token"
+        ));
+        assert!(matches!(
+            decode(json!({ "m": "Message", "c": { "content": "Hello, World!" } })),
+            ServerPacket::Message { ref content } if content == "Hello, World!"
+        ));
+        assert!(matches!(
+            decode(json!({ "m": "PrivateMessage", "c": { "content": "Hello, Notch!", "receiver": "Notch" } })),
+            ServerPacket::PrivateMessage { ref receiver, .. } if receiver == "Notch"
+        ));
+        assert!(matches!(
+            decode(json!({ "m": "BanUser", "c": { "user": "069a79f4-44e9-4726-a5be-fca90e38aaf5" } })),
+            ServerPacket::BanUser { .. }
+        ));
+        assert!(matches!(
+            decode(json!({ "m": "UnbanUser", "c": { "user": "069a79f4-44e9-4726-a5be-fca90e38aaf5" } })),
+            ServerPacket::UnbanUser { .. }
+        ));
+    }
+}
