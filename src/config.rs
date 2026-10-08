@@ -1,3 +1,4 @@
+use crate::ip::TrustedProxy;
 use clap::Args;
 use jsonwebtoken::Algorithm;
 use std::{net::SocketAddr, path::PathBuf, time::Duration};
@@ -30,6 +31,14 @@ pub struct NetConfig {
     /// If the extension is `pem`, `PEM` format will be used, otherwise `ASN1`.
     #[arg(long = "tls-key-file", env = "TLS_KEY_FILE")]
     pub key_file: Option<PathBuf>,
+
+    /// Proxies whose client address header is believed: CIDRs, or `cloudflare` for its ranges.
+    #[arg(long = "trusted-proxies", env = "TRUSTED_PROXIES", value_delimiter = ',')]
+    pub trusted_proxies: Vec<TrustedProxy>,
+
+    /// The header a trusted proxy puts the client address in.
+    #[arg(long = "real-ip-header", env = "REAL_IP_HEADER", default_value = "CF-Connecting-IP")]
+    pub real_ip_header: String,
 }
 
 #[derive(Args, Clone)]

@@ -15,11 +15,13 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::{Authenticator, UserInfo};
+use crate::ip::RealIp;
 use crate::message::{MessageValidator, RateLimiter};
 use crate::moderation::Moderation;
 use rand::{rngs::SysRng, SeedableRng};
 use rand_hc::Hc128Rng;
 use std::collections::{HashMap, HashSet};
+use std::net::IpAddr;
 use uuid::Uuid;
 
 const MAX_FRAME_SIZE: usize = 64 * 1024;
@@ -28,11 +30,13 @@ pub async fn chat_route(
     req: HttpRequest,
     stream: web::Payload,
     srv: web::Data<Addr<ChatServer>>,
+    real_ip: web::Data<RealIp>,
 ) -> actix_web::Result<HttpResponse> {
+    let ip = real_ip.of(&req);
     let (response, ws, messages) = actix_ws::handle(&req, stream)?;
     session::Session::create(|ctx| {
         ctx.add_stream(messages.max_frame_size(MAX_FRAME_SIZE));
-        session::Session::new(InternalId::new(0), srv.get_ref().clone(), ws)
+        session::Session::new(InternalId::new(0), srv.get_ref().clone(), ws, ip)
     });
     Ok(response)
 }
@@ -107,6 +111,7 @@ impl Handler<Disconnect> for ChatServer {
 
 pub(self) struct SessionState {
     addr: Recipient<Frame>,
+    ip: IpAddr,
     session_hash: Option<String>,
     login_pending: bool,
     user: Option<User>,

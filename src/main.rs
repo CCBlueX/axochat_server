@@ -2,6 +2,7 @@ mod auth;
 mod chat;
 mod config;
 mod error;
+mod ip;
 mod message;
 mod moderation;
 
@@ -81,11 +82,16 @@ async fn start_server(config: Config) -> Result<()> {
     let server = chat::ChatServer::new(server_config).start();
 
     let server_data = web::Data::new(server);
+    let real_ip = web::Data::new(ip::RealIp::new(
+        &config.net.trusted_proxies,
+        config.net.real_ip_header.clone(),
+    ));
     let address = config.net.address.to_string();
 
     let mut server = HttpServer::new(move || {
         App::new()
             .app_data(server_data.clone())
+            .app_data(real_ip.clone())
             .service(web::resource("/ws").to(chat::chat_route))
     });
 

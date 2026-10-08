@@ -6,6 +6,7 @@ use actix::*;
 use actix_ws as ws;
 use bytestring::ByteString;
 use std::future::Future;
+use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
@@ -19,16 +20,18 @@ pub struct Session {
     id: InternalId,
     addr: Addr<ChatServer>,
     ws: ws::Session,
+    ip: IpAddr,
     // old clients never answer pings, so the timeout only applies after the first pong
     last_pong: Option<Instant>,
 }
 
 impl Session {
-    pub fn new(id: InternalId, addr: Addr<ChatServer>, ws: ws::Session) -> Session {
+    pub fn new(id: InternalId, addr: Addr<ChatServer>, ws: ws::Session, ip: IpAddr) -> Session {
         Session {
             id,
             addr,
             ws,
+            ip,
             last_pong: None,
         }
     }
@@ -63,10 +66,11 @@ impl Actor for Session {
     fn started(&mut self, ctx: &mut Self::Context) {
         let addr = self.addr.clone();
         let recipient = ctx.address().recipient();
+        let ip = self.ip;
 
         // wait, not spawn: no frame may be handled before the id is assigned
         ctx.wait(async move {
-                addr.send(Connect::new(recipient)).await
+                addr.send(Connect::new(recipient, ip)).await
             }
             .into_actor(self)
             .map(|res, actor, ctx| {
