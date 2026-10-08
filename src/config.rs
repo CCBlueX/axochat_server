@@ -6,6 +6,9 @@ use std::{net::SocketAddr, path::PathBuf, time::Duration};
 #[derive(Args, Clone)]
 pub struct Config {
     #[command(flatten)]
+    pub api: ApiConfig,
+
+    #[command(flatten)]
     pub mojang: MojangConfig,
 
     #[command(flatten)]
@@ -89,10 +92,6 @@ pub struct AuthConfig {
 
 #[derive(Args, Clone)]
 pub struct ModConfig {
-    /// The file containing the moderators (line separated).
-    #[arg(long = "moderators-file", env = "MODERATORS_FILE", default_value = "./moderators.txt")]
-    pub moderators: PathBuf,
-
     /// The file containing the banned users (line separated).
     #[arg(long = "banned-file", env = "BANNED_FILE", default_value = "./banned.txt")]
     pub banned: PathBuf,
@@ -101,7 +100,7 @@ pub struct ModConfig {
 #[derive(Args, Clone)]
 pub struct DbConfig {
     /// The MySQL or MariaDB connection URL.
-    #[arg(long = "database-url", env = "DATABASE_URL", hide_env_values = true)]
+    #[arg(id = "database_url", long = "database-url", env = "DATABASE_URL", hide_env_values = true)]
     pub url: String,
 }
 
@@ -114,4 +113,15 @@ pub struct MojangConfig {
         hide = true
     )]
     pub session_url: String,
+}
+
+#[derive(Args, Clone)]
+pub struct ApiConfig {
+    /// The LiquidBounce Service API, which checks LiquidBounce Account logins.
+    #[arg(id = "api_url", long = "api-url", env = "API_URL", default_value = "https://api.liquidbounce.net")]
+    pub url: String,
+
+    /// The Service API token for role names, staff and linked Minecraft accounts.
+    #[arg(long = "api-token", env = "API_TOKEN", hide_env_values = true)]
+    pub token: Option<String>,
 }

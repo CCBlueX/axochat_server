@@ -15,8 +15,17 @@ impl ChatServer {
 
     fn handle_user(&mut self, user_id: InternalId, receiver: &Uuid, ban: bool) {
         let Some(user) = self.logged_in(user_id) else { return };
-        if !self.moderation.is_moderator(&self.identity(user).uuid) {
+        if !self.is_staff(user) {
             info!("`{}` tried to (un-)ban user without permission", user_id);
+            self.send_error(user_id, ClientError::NotPermitted);
+            return;
+        }
+
+        let protected = self
+            .users
+            .keys()
+            .any(|online| self.identity(*online).uuid == *receiver && self.is_staff(*online));
+        if ban && protected {
             self.send_error(user_id, ClientError::NotPermitted);
             return;
         }

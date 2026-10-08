@@ -26,27 +26,20 @@ impl ChatServer {
 
     pub(super) fn login_mojang(&mut self, user_id: InternalId, info: User, ctx: &mut Context<Self>) {
         let Some(connection) = self.connections.get(&user_id) else { return };
-        let Some(session_hash) = connection.session_hash.clone().filter(|_| connection.login == Login::Anonymous) else {
-            if connection.login == Login::Anonymous {
-                info!("User `{}` did not request mojang info, but tried to log in.", user_id);
-                self.send_error(user_id, ClientError::MojangRequestMissing);
-            } else {
-                self.send_error(user_id, ClientError::AlreadyLoggedIn);
-            }
-            return;
-        };
-        if !self.begin_login(user_id) {
+        if connection.login == Login::Anonymous && connection.session_hash.is_none() {
+            info!("User `{}` did not request mojang info, but tried to log in.", user_id);
+            self.send_error(user_id, ClientError::MojangRequestMissing);
             return;
         }
+        let session_hash = connection.session_hash.clone().unwrap_or_default();
+        let Some(visit) = self.begin_login(user_id) else { return };
 
-        let store = self.store.clone();
         let session_url = self.config.mojang.session_url.clone();
-        let Some(mut request) = self.identify_request(user_id, IdentityKey::Minecraft(info.uuid), info.name.clone(), None) else {
-            return;
-        };
+        let (api, store, logins) = (self.api.clone(), self.store.clone(), self.logins.clone());
 
         ctx.spawn(
             async move {
+                let _permit = logins.acquire().await;
                 let profile = authenticate(&session_url, &info.name, &session_hash).await.map_err(|err| {
                     warn!("Could not authenticate user `{}`: {}", user_id, err);
                     ClientError::LoginFailed
@@ -55,9 +48,24 @@ impl ChatServer {
                     return Err(ClientError::InvalidId);
                 }
 
-                request.name = profile.name;
+                // a Minecraft account linked to a LiquidBounce Account logs in as that account
+                let linked = api.linked_account(info.uuid).await.unwrap_or_else(|err| {
+                    warn!("Could not look up the account linked to `{}`: {}", info.uuid, err);
+                    None
+                });
+                let (request, roles) = match linked {
+                    Some(account) => (
+                        visit.identify(
+                            IdentityKey::Account(account.user_id),
+                            account.nickname.unwrap_or(profile.name),
+                            Some(info.uuid),
+                        ),
+                        account.roles,
+                    ),
+                    None => (visit.identify(IdentityKey::Minecraft(info.uuid), profile.name, None), Vec::new()),
+                };
                 let model = identify(store, request).await?;
-                Ok(Verified { model })
+                Ok(Verified { model, roles })
             }
             .into_actor(self)
             .map(move |result, actor, _ctx| actor.finish_login(user_id, result, info.allow_messages)),

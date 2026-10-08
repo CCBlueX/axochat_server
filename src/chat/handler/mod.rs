@@ -1,3 +1,4 @@
+mod account;
 mod ban;
 mod count;
 mod hello;
@@ -6,7 +7,7 @@ mod login;
 mod message;
 mod mojang;
 
-use super::{ChatServer, ClientPacket, ServerPacket, ServerPacketId};
+use super::{ChatServer, ServerPacket, ServerPacketId};
 
 use actix::*;
 
@@ -24,6 +25,9 @@ impl Handler<ServerPacketId> for ChatServer {
             }
             ServerPacket::LoginMojang(info) => {
                 self.login_mojang(user_id, info, ctx);
+            }
+            ServerPacket::LoginAccount { token, allow_messages } => {
+                self.login_account(user_id, token, allow_messages, ctx);
             }
             ServerPacket::RequestJWT => {
                 self.handle_request_jwt(user_id);

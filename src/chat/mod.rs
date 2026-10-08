@@ -9,6 +9,7 @@ pub use session::Frame;
 
 use packet::*;
 
+use crate::api::{Api, RoleDefinition};
 use crate::auth::{Authenticator, UserInfo};
 use crate::config::Config;
 use crate::entity::user;
@@ -26,9 +27,15 @@ use rand_hc::Hc128Rng;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 const MAX_FRAME_SIZE: usize = 64 * 1024;
+/// Outgoing login requests at once; a restart reconnects everyone at the same time.
+const CONCURRENT_LOGINS: usize = 64;
+const ROLE_REFRESH: Duration = Duration::from_secs(600);
 
 pub async fn chat_route(
     req: HttpRequest,
@@ -91,6 +98,9 @@ pub struct ChatServer {
     directory: HashMap<UserId, Identity>,
 
     store: Addr<Store>,
+    api: Arc<Api>,
+    logins: Arc<Semaphore>,
+    roles: HashMap<String, RoleDefinition>,
     rng: Hc128Rng,
     authenticator: Option<Authenticator>,
     validator: MessageValidator,
@@ -108,6 +118,9 @@ impl ChatServer {
             directory: HashMap::new(),
 
             store,
+            api: Arc::new(Api::new(&config.api)),
+            logins: Arc::new(Semaphore::new(CONCURRENT_LOGINS)),
+            roles: HashMap::new(),
             rng: Hc128Rng::try_from_rng(&mut SysRng).expect("could not initialize hc128 rng"),
             authenticator: Authenticator::new(&config.auth),
             validator: MessageValidator::new(config.message.clone()),
@@ -177,6 +190,34 @@ fn send_message(connection: &Connection, message: ClientPacket) -> bool {
 
 impl Actor for ChatServer {
     type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Context<Self>) {
+        self.refresh_roles(ctx);
+        ctx.run_interval(ROLE_REFRESH, |actor, ctx| actor.refresh_roles(ctx));
+    }
+}
+
+impl ChatServer {
+    fn refresh_roles(&mut self, ctx: &mut Context<Self>) {
+        let api = self.api.clone();
+        ctx.spawn(async move { api.roles().await }.into_actor(self).map(|result, actor, _ctx| {
+            match result {
+                Ok(roles) => {
+                    actor.roles = roles.into_iter().map(|role| (role.id.clone(), role)).collect();
+                }
+                Err(err) => warn!("Could not refresh roles: {}", err),
+            }
+        }));
+    }
+
+    fn is_staff(&self, user: UserId) -> bool {
+        self.users.get(&user).is_some_and(|online| {
+            online
+                .roles
+                .iter()
+                .any(|role| self.roles.get(role).is_some_and(|role| role.is_staff))
+        })
+    }
 }
 
 impl Handler<Disconnect> for ChatServer {
@@ -215,6 +256,7 @@ struct Connection {
 struct OnlineUser {
     connections: Vec<InternalId>,
     rate_limiter: RateLimiter,
+    roles: Vec<String>,
 }
 
 #[derive(Message)]

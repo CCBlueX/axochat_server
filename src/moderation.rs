@@ -10,41 +10,26 @@ use uuid::Uuid;
 
 pub struct Moderation {
     config: ModConfig,
-    moderators: HashSet<Uuid>,
     banned: HashSet<Uuid>,
 }
 
 impl Moderation {
     pub fn new(config: ModConfig) -> Result<Moderation> {
-        let moderators = read_ids(&config.moderators)?;
         let banned = read_ids(&config.banned)?;
-        Ok(Moderation {
-            config,
-            moderators,
-            banned,
-        })
+        Ok(Moderation { config, banned })
     }
 
-    pub fn is_moderator(&self, user: &Uuid) -> bool {
-        self.moderators.contains(user)
-    }
-
-    /// Ban user if user is not a moderator.
     pub fn ban(&mut self, user: &Uuid) -> Result<()> {
-        if self.is_moderator(user) {
-            Err(ClientError::NotPermitted.into())
-        } else {
-            if self.banned.insert(user.clone()) {
-                let mut file = OpenOptions::new()
-                    .append(true)
-                    .create(true)
-                    .open(&self.config.banned)?;
+        if self.banned.insert(*user) {
+            let mut file = OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&self.config.banned)?;
 
-                writeln!(file, "{}", user.hyphenated())?;
-            }
-
-            Ok(())
+            writeln!(file, "{}", user.hyphenated())?;
         }
+
+        Ok(())
     }
 
     pub fn unban(&mut self, user: &Uuid) -> Result<()> {

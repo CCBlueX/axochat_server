@@ -38,16 +38,12 @@ impl ChatServer {
                 return;
             }
         };
-        if !self.begin_login(user_id) {
-            return;
-        }
+        let Some(visit) = self.begin_login(user_id) else { return };
 
         let store = self.store.clone();
-        let Some(request) = self.identify_request(user_id, IdentityKey::Minecraft(info.uuid), info.name, None) else {
-            return;
-        };
+        let request = visit.identify(IdentityKey::Minecraft(info.uuid), info.name, None);
         ctx.spawn(
-            async move { identify(store, request).await.map(|model| Verified { model }) }
+            async move { identify(store, request).await.map(|model| Verified { model, roles: Vec::new() }) }
                 .into_actor(self)
                 .map(move |result, actor, _ctx| actor.finish_login(user_id, result, allow_messages)),
         );

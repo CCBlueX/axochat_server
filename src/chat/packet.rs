@@ -83,6 +83,7 @@ pub enum ServerPacket {
     RequestMojangInfo,
     LoginMojang(User),
     LoginJWT { token: String, allow_messages: bool },
+    LoginAccount { token: String, allow_messages: bool },
     RequestJWT,
     Message { content: String },
     PrivateMessage { receiver: String, content: String },

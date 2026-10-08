@@ -6,31 +6,45 @@ use crate::store::{Identify, IdentityKey, Store};
 use log::*;
 
 use actix::*;
+use std::net::IpAddr;
 use uuid::Uuid;
 
 pub(super) struct Verified {
     pub model: user::Model,
+    pub roles: Vec<String>,
+}
+
+/// Taken before the login goes async.
+pub(super) struct Visit {
+    ip: IpAddr,
+    id: Uuid,
+    at: i64,
+}
+
+impl Visit {
+    pub fn identify(self, key: IdentityKey, name: String, linked: Option<Uuid>) -> Identify {
+        Identify {
+            key,
+            name: name.chars().take(64).collect(),
+            linked,
+            ip: self.ip,
+            id: self.id,
+            at: self.at,
+        }
+    }
 }
 
 impl ChatServer {
-    pub(super) fn begin_login(&mut self, id: InternalId) -> bool {
-        let Some(connection) = self.connections.get_mut(&id) else { return false };
+    pub(super) fn begin_login(&mut self, id: InternalId) -> Option<Visit> {
+        let connection = self.connections.get_mut(&id)?;
         if connection.login != Login::Anonymous {
             info!("User `{}` tried to log in multiple times.", id);
             self.send_error(id, ClientError::AlreadyLoggedIn);
-            return false;
+            return None;
         }
         connection.login = Login::Pending;
-        true
-    }
-
-    pub(super) fn identify_request(&mut self, id: InternalId, key: IdentityKey, name: String, linked: Option<Uuid>) -> Option<Identify> {
-        let ip = self.connections.get(&id)?.ip;
-        Some(Identify {
-            key,
-            name,
-            linked,
-            ip,
+        Some(Visit {
+            ip: connection.ip,
             id: new_id(&mut self.rng),
             at: now_ms(),
         })
@@ -58,14 +72,13 @@ impl ChatServer {
         connection.session_hash = None;
 
         let message_config = &self.config.message;
-        self.users
-            .entry(identity.id)
-            .or_insert_with(|| OnlineUser {
-                connections: Vec::new(),
-                rate_limiter: RateLimiter::new(message_config.clone()),
-            })
-            .connections
-            .push(id);
+        let online = self.users.entry(identity.id).or_insert_with(|| OnlineUser {
+            connections: Vec::new(),
+            rate_limiter: RateLimiter::new(message_config.clone()),
+            roles: Vec::new(),
+        });
+        online.connections.push(id);
+        online.roles = verified.roles;
         self.directory.insert(identity.id, identity);
 
         self.send(id, ClientPacket::Success { reason: SuccessReason::Login });
